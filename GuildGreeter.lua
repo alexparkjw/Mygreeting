@@ -572,7 +572,7 @@ local function HandleGuildCommand(cmd, whisperTo)
         GG_Send("!전문기술 - 전문기술 분포", whisperTo)
         GG_Send("!장비 - 내 장비점수", whisperTo)
         GG_Send("!장비 [이름] - 특정 길드원 장비점수", whisperTo)
-        GG_Send("!장비순위 - 전체 장비점수 순위", whisperTo)
+        GG_Send("!길드장비 - 전체 장비점수 순위", whisperTo)
         GG_Send("!길드[명령어] - 위 명령어를 길드창에 표시  예) !길드현황", whisperTo)
         GG_Send("─── 기타 ───", whisperTo)
         GG_Send("!도움 종족 - 종족별 멤버 검색 키워드", whisperTo)
@@ -589,8 +589,8 @@ local function HandleGuildCommand(cmd, whisperTo)
     elseif cmd == "help_gear" then
         GG_Send("!장비 - 내 장비점수 + 장비 목록", whisperTo)
         GG_Send("!장비 [이름] - 특정 길드원 장비점수 + 장비 목록", whisperTo)
-        GG_Send("!장비순위 - 전체 장비점수 순위", whisperTo)
-        GG_Send("!길드장비 / !길드장비 [이름] / !길드장비순위 - 길드창에 표시", whisperTo)
+        GG_Send("!길드장비 - 전체 장비점수 순위", whisperTo)
+        GG_Send("!전체장비 - 수집된 전원 순위 (귓말)", whisperTo)
     elseif cmd == "help_daily" then
         GG_Send("일정 등록 (길드챗): !일일일던 [이름]  /  !일일영던 [이름]  /  !주간전장 [이름]", whisperTo)
         GG_Send("일정 조회: !일던  !영던  !전장  (값 없이 등록 명령어 치면 초기화)", whisperTo)
@@ -1158,7 +1158,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 HandleGuildProfList(PROF_CMD_KEYWORDS["!" .. sub], wt)
             elseif sub == "장비" then
                 if MyGreeting_GetGearScore then MyGreeting_GetGearScore(sender, wt) end
-            elseif sub == "장비순위" then
+            elseif sub == "길드장비" then
                 if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, true) end
             elseif sub == "전체장비" then
                 if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, false) end
@@ -1263,14 +1263,14 @@ SlashCmdList["MYGREETING"] = function(msg)
         GG_Send("─── 장비 ───", L)
         GG_Send("/mg 장비 - 내 장비점수 + 장비 목록", L)
         GG_Send("/mg 장비 [이름] - 특정 길드원 장비점수 + 장비 목록", L)
-        GG_Send("/mg 장비순위 - 길드원 전체 장비점수 순위", L)
+        GG_Send("/mg 길드장비 - 길드원 전체 장비점수 순위", L)
         GG_Send("/mg 장비초기화 - 장비 데이터 전체 삭제", L)
         GG_Send("─── 길드챗 (!길드[명령어] - 길드창에 표시) ───", L)
         GG_Send("!현황 / !레벨 / !직업 / !종족 / !인던 / !지역 / !전문기술 / !등급", L)
         GG_Send("!정보 [이름] - 길드원 상세 정보", L)
         GG_Send("!장비 - 내 장비점수", L)
         GG_Send("!장비 [이름] - 특정 길드원 장비점수", L)
-        GG_Send("!장비순위 - 전체 장비점수 순위", L)
+        GG_Send("!길드장비 - 전체 장비점수 순위", L)
         GG_Send("!도움 - 길드챗 도움말", L)
         GG_Send("─── 기타 ───", L)
         GG_Send("!도움 종족 - 종족별 멤버 검색 키워드", L)
@@ -1304,7 +1304,7 @@ SlashCmdList["MYGREETING"] = function(msg)
         end
         if name and MyGreeting_GetGearScore then MyGreeting_GetGearScore(name, "LOCAL") end
 
-    elseif msg == "장비순위" then
+    elseif msg == "길드장비" then
         if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", true) end
 
     elseif msg == "전체장비" then
