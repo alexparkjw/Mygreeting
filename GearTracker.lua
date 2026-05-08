@@ -182,12 +182,15 @@ local function TryInspect(unit)
         local isBusy     = inspecting ~= nil
         local now        = GetTime()
         local coolLeft   = cooldowns[name] and math.floor(INSPECT_COOLDOWN_SEC - (now - cooldowns[name])) or 0
+        local cached     = MyGreetingDB and MyGreetingDB.gearData and MyGreetingDB.gearData[name]
+        local cacheStr   = cached and (cached.score .. "점 (" .. cached.date .. ")") or "없음"
         DEFAULT_CHAT_FRAME:AddMessage(
             "|cffFFFF00[장비디버그]|r " .. name ..
-            "  canInspect=" .. tostring(canInspect) ..
-            "  isGuild=" .. tostring(isGuild) ..
+            "  캐시=" .. cacheStr ..
+            "  inspect가능=" .. tostring(canInspect) ..
+            "  길드=" .. tostring(isGuild) ..
             "  busy=" .. tostring(isBusy) ..
-            "  cooldown=" .. coolLeft .. "s")
+            "  쿨다운=" .. coolLeft .. "s")
     end
 
     if inspecting then return end
