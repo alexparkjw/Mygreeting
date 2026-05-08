@@ -316,13 +316,28 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
             return
         end
 
-        local unit = inspecting.unit
-        local name = inspecting.name
+        local savedGuid = inspecting.guid
+        local name      = inspecting.name
         inspecting = nil
 
+        -- GUID로 현재 접근 가능한 유닛 토큰 찾기
+        local function FindUnit(guid)
+            if UnitGUID("target") == guid then return "target" end
+            local prefix = IsInRaid() and "raid" or "party"
+            local max    = IsInRaid() and 40 or 4
+            for i = 1, max do
+                if UnitGUID(prefix .. i) == guid then return prefix .. i end
+            end
+            return nil
+        end
+
         local function TrySave(retry)
-            local score, items = CollectGear(unit)
-            local specs = GetSpecInfo(true, unit)
+            local unit = FindUnit(savedGuid)
+            local score, items, specs
+            if unit then
+                score, items = CollectGear(unit)
+                specs = GetSpecInfo(true, unit)
+            end
             if score then
                 if not MyGreetingDB then return end
                 if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
