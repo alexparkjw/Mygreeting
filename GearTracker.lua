@@ -389,7 +389,7 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly)
     end
     table.sort(list, function(a, b) return a.score > b.score end)
 
-    local RANK_LIMIT = 20
+    local RANK_LIMIT = 10
     local total = #list
     local title = guildOnly and "길드원 장비점수 순위" or "전체 장비점수 순위"
     local wt = whisperTo
