@@ -374,7 +374,8 @@ end
 -- whisperTo: "LOCAL" = 나만 보임 / 플레이어명 = 귓말 / nil = 길드챗
 -- ============================================================
 -- guildOnly=true면 길드원만, false/nil이면 수집된 전체
-function MyGreeting_PrintGearRank(whisperTo, guildOnly)
+-- startFrom: 시작 순위 (기본 1), 10개씩 표시
+function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom)
     local data = MyGreetingDB and MyGreetingDB.gearData
     if not data or not next(data) then
         GearSend("수집된 데이터 없음 — 길드원 타겟 또는 파티 맺으면 자동 수집됩니다", whisperTo)
@@ -391,21 +392,32 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly)
 
     local RANK_LIMIT = 10
     local total = #list
+    local from = math.max(1, tonumber(startFrom) or 1)
+    local to   = math.min(total, from + RANK_LIMIT - 1)
+
+    if from > total then
+        GearSend("해당 범위에 데이터 없음 (전체 " .. total .. "명)", whisperTo)
+        return
+    end
+
     local title = guildOnly and "길드원 장비점수 순위" or "전체 장비점수 순위"
+    local suffix = " (" .. from .. "-" .. to .. "/" .. total .. "명)"
     local wt = whisperTo
     if wt == "LOCAL" then
-        GearSend(title .. " (" .. total .. "명):", wt)
-        for i, e in ipairs(list) do
+        GearSend(title .. suffix .. ":", wt)
+        for i = from, to do
+            local e = list[i]
             GearSend(i .. ". " .. e.name .. "  " .. e.score .. "점" .. SpecToString(e.specs) .. "  (" .. e.date .. ")", wt)
         end
     else
-        if total > RANK_LIMIT then list[RANK_LIMIT + 1] = nil end
-        local suffix = total > RANK_LIMIT and (" (상위 " .. RANK_LIMIT .. "/" .. total .. "명)") or (" (" .. total .. "명)")
         local interval = (wt ~= nil) and 0.4 or 1.5
         GearSend(title .. suffix .. ":", wt)
-        for i, e in ipairs(list) do
+        local idx = 0
+        for i = from, to do
+            local e = list[i]
             local line = i .. ". " .. e.name .. "  " .. e.score .. "점" .. SpecToString(e.specs) .. "  (" .. e.date .. ")"
-            local d = i * interval
+            idx = idx + 1
+            local d = idx * interval
             C_Timer.After(d, function() GearSend(line, wt) end)
         end
     end

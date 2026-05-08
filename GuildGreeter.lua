@@ -1163,6 +1163,11 @@ frame:SetScript("OnEvent", function(self, event, ...)
             elseif sub == "장비전체" then
                 if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, false) end
             else
+                local guildFrom = sub:match("^장비길드 (%d+)$")
+                if guildFrom and MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, true, tonumber(guildFrom)) end
+                local allFrom = sub:match("^장비전체 (%d+)$")
+                if allFrom and MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, false, tonumber(allFrom)) end
+            else
                 local gearT = sub:match("^장비 (.+)$")
                 if gearT then
                     if MyGreeting_GetGearScore then MyGreeting_GetGearScore(strtrim(gearT), wt) end
@@ -1308,9 +1313,13 @@ SlashCmdList["MYGREETING"] = function(msg)
 
     elseif msg == "장비길드" then
         if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", true) end
+    elseif msg:match("^장비길드 (%d+)$") then
+        if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", true, tonumber(msg:match("^장비길드 (%d+)$"))) end
 
     elseif msg == "장비전체" then
         if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", false) end
+    elseif msg:match("^장비전체 (%d+)$") then
+        if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", false, tonumber(msg:match("^장비전체 (%d+)$"))) end
 
     elseif msg == "장비초기화" then
         if MyGreetingDB then MyGreetingDB.gearData = {} end
