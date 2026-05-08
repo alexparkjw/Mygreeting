@@ -212,18 +212,20 @@ local function TryInspect(unit)
             "  " .. status)
     end
 
-    -- GearScore가 이미 캐시를 채운 경우 inspect 없이 즉시 저장
+    -- GearScore가 이미 캐시를 채운 경우 점수 즉시 저장, 아이템은 inspect로 보완
     local score, items = CollectGear(unit)
     if score then
         if not MyGreetingDB then return end
         if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
         local specs = GetSpecInfo(false, unit)
-        MyGreetingDB.gearData[name] = { score = score, date = date("%m/%d %H:%M"), specs = specs, items = items }
-        if gearDebugMode then
-            DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r " .. name .. " 캐시에서 즉시 저장: " .. score)
+        -- 아이템 목록이 비어있으면 inspect도 진행해서 목록 채움
+        if items and #items > 0 then
+            MyGreetingDB.gearData[name] = { score = score, date = date("%m/%d %H:%M"), specs = specs, items = items }
+            if gearDebugMode then
+                DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r " .. name .. " 캐시에서 즉시 저장: " .. score)
+            return
         end
-        cooldowns[name] = now
-        return
+        -- 아이템 목록 없으면 inspect로 계속 진행
     end
 
     if inspecting then return end
