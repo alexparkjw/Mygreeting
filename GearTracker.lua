@@ -54,7 +54,7 @@ end
 
 local function CollectGear(unit)
     local gs = GetGearScoreFromCache(unit)
-    if not gs then return nil, nil end
+    if not gs or gs <= 0 then return nil, nil end
 
     local items = {}
     for _, slot in ipairs(GEAR_SLOTS) do
