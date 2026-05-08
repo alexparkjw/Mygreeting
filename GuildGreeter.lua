@@ -889,11 +889,15 @@ frame:SetScript("OnEvent", function(self, event, ...)
 
         -- 정각 인사 공통 함수
         local function ScheduleDailyGreeting(targetHour, windowSec, dbKey, msgKey)
+            local sentThisSession = false
+
             local function SendGreeting()
+                if sentThisSession then return end
                 local today = date("%Y-%m-%d")
                 if db and db[dbKey] == today then return end
                 local msg = MyGreeting_GetMsg(msgKey)
                 if IsInGuild() and msg ~= "" then
+                    sentThisSession = true
                     SendChatMessage(msg, "GUILD")
                     if db then db[dbKey] = today end
                 end
@@ -902,19 +906,26 @@ frame:SetScript("OnEvent", function(self, event, ...)
             local function Schedule()
                 local t = date("*t")
                 local now = t.hour * 3600 + t.min * 60 + t.sec
-                local target = targetHour * 3600
-                local delay = target - now
-                if delay <= 0 and delay >= -windowSec then
-                    C_Timer.After(3, function() SendGreeting() end)
-                    delay = delay + 86400
-                elseif delay <= 0 then
-                    delay = delay + 86400
-                end
+                local delay = targetHour * 3600 - now
+                if delay <= 0 then delay = delay + 86400 end
                 C_Timer.After(delay, function()
+                    sentThisSession = false  -- 새 날이므로 세션 플래그 초기화
                     SendGreeting()
                     Schedule()
                 end)
             end
+
+            -- 로그인/리로드 시점에 이미 시간대 안이면 즉시 발송
+            local function CheckNow()
+                local t = date("*t")
+                local now = t.hour * 3600 + t.min * 60 + t.sec
+                local delay = targetHour * 3600 - now
+                if delay <= 0 and delay >= -windowSec then
+                    C_Timer.After(3, SendGreeting)
+                end
+            end
+
+            CheckNow()
             Schedule()
         end
 
