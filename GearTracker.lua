@@ -11,15 +11,6 @@ local SLOT_NAMES = {
     [17]="주무기", [18]="보조", [19]="원거리",
 }
 
--- GearScore 슬롯 가중치
-local SLOT_MOD = {
-    [1]=1,      [2]=0.5625, [3]=0.75,   [4]=0.5625, [5]=1,
-    [8]=0.5625, [9]=0.75,   [10]=0.75,  [11]=1,     [12]=0.75,
-    [13]=0.5625,[14]=0.5625,[15]=0.5625,[16]=0.5625,
-    [17]=1,     [18]=0.5,   [19]=0.3164,
-}
--- 품질 가중치 (0=불량 1=일반 2=고급 3=희귀 4=영웅 5=전설)
-local QUALITY_MOD = { [0]=0, [1]=0, [2]=0.5, [3]=0.75, [4]=1.0, [5]=1.3 }
 local INSPECT_COOLDOWN_SEC = 60
 
 -- 클래스별 특성 탭 이름 (GetTalentTabInfo 가 이름을 못 돌려줄 때 폴백)
@@ -61,37 +52,21 @@ local function GetGearScoreFromCache(unit)
 end
 
 local function CollectGear(unit)
+    local gs = GetGearScoreFromCache(unit)
+    if not gs then return nil, nil end
+
     local items = {}
     for _, slot in ipairs(GEAR_SLOTS) do
         local link = GetInventoryItemLink(unit, slot)
         if link then
-            local _, _, quality, ilvl, _, _, _, _, equipSlot = GetItemInfo(link)
-            if ilvl and ilvl > 0 and quality then
-                local qMod = QUALITY_MOD[quality] or 0
-                local sMod = SLOT_MOD[slot] or 0
-                if equipSlot == "INVTYPE_2HWEAPON" then sMod = 2 end
+            local _, _, quality, ilvl = GetItemInfo(link)
+            if ilvl and ilvl > 0 then
                 items[#items + 1] = { slot = slot, link = link, ilvl = ilvl, quality = quality }
             end
         end
     end
-    if #items == 0 then return nil, nil end
 
-    -- GearScore 애드온 캐시 우선 사용
-    local gs, avgIlvl = GetGearScoreFromCache(unit)
-    if gs then
-        return math.floor(gs), items
-    end
-
-    -- 없으면 직접 계산
-    local gsTotal = 0
-    for _, item in ipairs(items) do
-        local _, _, quality, ilvl, _, _, _, _, equipSlot = GetItemInfo(item.link)
-        local qMod = QUALITY_MOD[quality] or 0
-        local sMod = SLOT_MOD[item.slot] or 0
-        if equipSlot == "INVTYPE_2HWEAPON" then sMod = 2 end
-        gsTotal = gsTotal + (ilvl * sMod * qMod)
-    end
-    return math.floor(gsTotal), items
+    return math.floor(gs), items
 end
 
 local function ReadTalentTab(tabIndex, isInspect, group)
