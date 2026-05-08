@@ -227,6 +227,7 @@ local function TryInspect(unit)
             MyGreetingDB.gearData[name] = { score = score, date = date("%m/%d %H:%M"), specs = specs, items = items }
             if gearDebugMode then
                 DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r " .. name .. " 캐시에서 즉시 저장: " .. score)
+            end
             return
         end
         -- 아이템 목록 없으면 inspect로 계속 진행
