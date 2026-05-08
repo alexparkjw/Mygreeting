@@ -503,6 +503,7 @@ local function HandleGuildCommand(cmd, whisperTo)
         GG_Send("!현황 !레벨 !직업 !종족 !인던 !지역 !전문기술 !등급 !정보 [이름]", whisperTo)
         GG_Send("!도움 직업  /  !도움 종족  /  !도움 전문기술  /  !도움 일정", whisperTo)
         GG_Send("예) !사제  →  나만 보임  /  !길드사제  →  길드챗 공개", whisperTo)
+        GG_Send("장비: !장비  !장비 [이름]  !장비순위  !길드장비  !길드장비 [이름]", whisperTo)
     elseif cmd == "help_class" then
         GG_Send("직업별 멤버목록: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드 !죽기", whisperTo)
     elseif cmd == "help_race" then
@@ -1159,6 +1160,12 @@ SlashCmdList["MYGREETING"] = function(msg)
         GG_Send("조회 명령어 (나만 보임): /mg 현황  레벨  직업  종족  인던  지역  전문기술  등급", L)
         GG_Send("직업/종족/전문기술 이름 직접 입력 가능  예) /mg 사제  /mg 오크  /mg 무두", L)
         GG_Send("정보 조회: /mg 정보 [이름]  등급별: /mg 등급 [등급명]", L)
+        GG_Send("── 장비 ──────────────────────────────────────", L)
+        GG_Send("/mg 장비 — 내 장비점수 + 장비 목록", L)
+        GG_Send("/mg 장비 [이름] — 특정 길드원 장비점수 + 장비 목록", L)
+        GG_Send("/mg 장비순위 — 수집된 길드원 전체 장비점수 순위", L)
+        GG_Send("/mg 장비초기화 — 장비 데이터 전체 삭제", L)
+        GG_Send("길드챗: !장비  !장비 [이름]  !장비순위  !길드장비  !길드장비 [이름]", L)
 
     elseif lower == "reset" then
         if db then
