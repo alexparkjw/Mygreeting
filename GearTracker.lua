@@ -27,9 +27,10 @@ local CLASS_SPECS = {
     DEATHKNIGHT = {"혈기", "냉기", "부정"},
 }
 
-local inspecting  = nil
-local cooldowns   = {}
-local lastTryTime = {}  -- 중복 호출 방지용 (1초 이내 동일 유닛 재호출 무시)
+local inspecting   = nil
+local cooldowns    = {}
+local lastTryTime  = {}  -- 중복 호출 방지용 (1초 이내 동일 유닛 재호출 무시)
+local scanPending  = false
 
 local function IsGuildMember(name)
     local total = GetNumGuildMembers()
@@ -333,7 +334,13 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
         TryInspect("target")
 
     elseif event == "GROUP_ROSTER_UPDATE" then
-        C_Timer.After(3, ScanGroup)
+        if not scanPending then
+            scanPending = true
+            C_Timer.After(3, function()
+                scanPending = false
+                ScanGroup()
+            end)
+        end
 
     elseif event == "PLAYER_LOGIN" then
         C_Timer.After(3, CollectSelf)
