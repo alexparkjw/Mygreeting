@@ -205,6 +205,20 @@ local function TryInspect(unit)
             "  " .. status)
     end
 
+    -- GearScore가 이미 캐시를 채운 경우 inspect 없이 즉시 저장
+    local score, items = CollectGear(unit)
+    if score then
+        if not MyGreetingDB then return end
+        if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
+        local specs = GetSpecInfo(false, unit)
+        MyGreetingDB.gearData[name] = { score = score, date = date("%m/%d %H:%M"), specs = specs, items = items }
+        if gearDebugMode then
+            DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r " .. name .. " 캐시에서 즉시 저장: " .. score)
+        end
+        cooldowns[name] = now
+        return
+    end
+
     if inspecting then return end
     if not CanInspect(unit) then return end
 
