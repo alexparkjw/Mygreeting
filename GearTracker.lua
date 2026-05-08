@@ -275,13 +275,12 @@ gearFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 gearFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "INSPECT_READY" then
         local guid = ...
+        if not inspecting then return end
         if gearDebugMode then
             DEFAULT_CHAT_FRAME:AddMessage(
-                "|cffFFFF00[장비디버그]|r INSPECT_READY guid=" .. tostring(guid) ..
-                "  inspecting=" .. tostring(inspecting and inspecting.name) ..
-                "  match=" .. tostring(inspecting and inspecting.guid == guid))
+                "|cffFFFF00[장비디버그]|r INSPECT_READY " .. inspecting.name ..
+                "  match=" .. tostring(inspecting.guid == guid))
         end
-        if not inspecting then return end
         if inspecting.guid ~= guid then
             inspecting = nil
             return
