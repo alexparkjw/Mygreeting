@@ -253,6 +253,24 @@ end
 
 local GUILD_CMD_COOLDOWN_SEC = 10
 
+local GEAR_SLOT_CMDS = {
+    ["머리"]       = {1},
+    ["목"]         = {2},
+    ["어깨"]       = {3},
+    ["등"]         = {4},
+    ["가슴"]       = {5},
+    ["손목"]       = {8},
+    ["손"]         = {9},
+    ["벨트"]       = {10},
+    ["다리"]       = {11},
+    ["발"]         = {12},
+    ["손가락"]     = {13, 14},
+    ["장신구"]     = {15, 16},
+    ["주장비"]     = {17},
+    ["보조장비"]   = {18},
+    ["원거리장비"] = {19},
+}
+
 -- ============================================================
 -- 전문기술별 멤버 목록 수집
 -- ============================================================
@@ -430,7 +448,9 @@ local function HandleGuildCharInfo(targetName, whisperTo)
                     local gsStr = ""
                     local gearInfo = MyGreetingDB and MyGreetingDB.gearData and MyGreetingDB.gearData[shortName]
                     if gearInfo then
-                        gsStr = "  /  GS: " .. gearInfo.score
+                        local gs = gearInfo.gs and tostring(gearInfo.gs) or "?"
+                        local scoreDisp = gearInfo.ilvl and ("ilvl:" .. tostring(gearInfo.ilvl) .. "(gs:" .. gs .. ")") or tostring(gearInfo.score or "?")
+                        gsStr = "  /  " .. scoreDisp
                     end
                     GG_Send(shortName .. " [" .. rankName .. "]  " .. race .. " " .. className .. "  " .. level .. "레벨  " .. onlineStr .. gsStr, whisperTo)
                     GG_Send("지역: " .. zoneStr .. "  /  쪽지: " .. noteStr, whisperTo)
@@ -590,6 +610,9 @@ local function HandleGuildCommand(cmd, whisperTo)
         GG_Send("!장비 [이름] - 특정 길드원 장비점수 + 장비 목록", whisperTo)
         GG_Send("!장비길드 - 길드원 장비점수 순위", whisperTo)
         GG_Send("!장비전체 - 수집된 전원 순위", whisperTo)
+        GG_Send("─── 슬롯 조회 ([이름] 생략 시 본인) ───", whisperTo)
+        GG_Send("!머리 !목 !어깨 !등 !가슴 !손목 !손 !벨트 !다리 !발", whisperTo)
+        GG_Send("!손가락(반지x2) !장신구(x2) !주장비 !보조장비 !원거리장비", whisperTo)
     elseif cmd == "help_daily" then
         GG_Send("일정 등록 (길드챗): !일일일던 [이름]  /  !일일영던 [이름]  /  !주간전장 [이름]", whisperTo)
         GG_Send("일정 조회: !일던  !영던  !전장  (값 없이 등록 명령어 치면 초기화)", whisperTo)
@@ -1172,10 +1195,19 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 elseif gearT then
                     if MyGreeting_GetGearScore then MyGreeting_GetGearScore(strtrim(gearT), wt) end
                 else
-                    local infoT = sub:match("^정보%s+(.+)$")
-                    if infoT then HandleGuildCharInfo(infoT, wt) end
-                    local rankT = sub:match("^등급%s+(.+)$")
-                    if rankT then HandleGuildCommand("rank:" .. strtrim(rankT), wt) end
+                    -- 슬롯 조회: "!머리", "!머리 이름"
+                    local slotCmd, slotTarget = sub:match("^(%S+)%s+(.+)$")
+                    if not slotCmd then slotCmd = sub end
+                    local slotIds = GEAR_SLOT_CMDS[slotCmd]
+                    if slotIds then
+                        local targetName = (slotTarget and strtrim(slotTarget) ~= "") and strtrim(slotTarget) or sender
+                        if MyGreeting_GetGearSlot then MyGreeting_GetGearSlot(targetName, slotIds, wt) end
+                    else
+                        local infoT = sub:match("^정보%s+(.+)$")
+                        if infoT then HandleGuildCharInfo(infoT, wt) end
+                        local rankT = sub:match("^등급%s+(.+)$")
+                        if rankT then HandleGuildCommand("rank:" .. strtrim(rankT), wt) end
+                    end
                 end
             end
         end
@@ -1278,6 +1310,9 @@ SlashCmdList["MYGREETING"] = function(msg)
         GG_Send("!장비 [이름] - 특정 길드원 장비점수", L)
         GG_Send("!장비길드 - 길드원 장비점수 순위", L)
         GG_Send("!장비전체 - 수집된 전원 순위", L)
+        GG_Send("!머리/목/어깨/등/가슴/손목/손/벨트/다리/발 [이름]", L)
+        GG_Send("!손가락/장신구/주장비/보조장비/원거리장비 [이름]", L)
+        GG_Send("!도움 장비 - 슬롯 명령어 전체 목록", L)
         GG_Send("!도움 - 길드챗 도움말", L)
         GG_Send("─── 기타 ───", L)
         GG_Send("!도움 종족 - 종족별 멤버 검색 키워드", L)

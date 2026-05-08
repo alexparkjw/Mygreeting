@@ -5,11 +5,12 @@
 
 local GEAR_SLOTS = { 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 }
 local SLOT_NAMES = {
-    [1]="머리", [2]="목걸이", [3]="어깨", [4]="망토", [5]="가슴",
+    [1]="머리", [2]="목걸이", [3]="어깨", [4]="등", [5]="가슴",
     [8]="손목", [9]="장갑", [10]="허리", [11]="다리", [12]="신발",
     [13]="반지1", [14]="반지2", [15]="장신구1", [16]="장신구2",
-    [17]="주무기", [18]="보조", [19]="원거리",
+    [17]="주장비", [18]="보조장비", [19]="원거리장비",
 }
+local SKIP_SLOTS = { [6] = true, [7] = true }  -- 속옷, 휘장 제외
 
 local INSPECT_COOLDOWN_SEC = 30
 
@@ -61,8 +62,8 @@ local function CollectGear(unit)
         local link = GetInventoryItemLink(unit, slot)
         if link then
             local _, _, quality, ilvl = GetItemInfo(link)
+            items[#items + 1] = { slot = slot, link = link, ilvl = ilvl or 0, quality = quality }
             if ilvl and ilvl > 0 then
-                items[#items + 1] = { slot = slot, link = link, ilvl = ilvl, quality = quality }
                 totalIlvl = totalIlvl + ilvl
                 count = count + 1
             end
@@ -80,6 +81,16 @@ end
 local function ScoreStr(info)
     local gs = info.gs and tostring(info.gs) or "?"
     return "ilvl:" .. tostring(info.ilvl) .. "(gs:" .. gs .. ")"
+end
+
+local function ItemDisplay(item)
+    local slotName = SLOT_NAMES[item.slot] or "?"
+    local ilvl     = "[" .. item.ilvl .. "]"
+    if item.link then
+        return slotName .. " " .. ilvl .. " " .. item.link
+    else
+        return slotName .. " " .. ilvl .. " " .. (item.name or "?")
+    end
 end
 
 local function ReadTalentTab(tabIndex, isInspect, group)
@@ -237,11 +248,16 @@ local function TryInspect(unit)
         if items and #items > 0 then
             MyGreetingDB.gearData[name] = { ilvl = ilvl, gs = gs, date = date("%m/%d %H:%M"), specs = specs, items = items }
             if gearDebugMode then
-                DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r " .. name .. " 캐시에서 즉시 저장: " .. ilvl)
-            end
-            if gearDebugMode and unit == "target" then
                 local saved = MyGreetingDB.gearData[name]
-                DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r DB저장: " .. name .. "  " .. ScoreStr(saved) .. "  아이템 " .. #(saved.items or {}) .. "개" .. SpecToString(specs))
+                if unit == "target" then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r DB저장: " .. name .. "  " .. ScoreStr(saved) .. SpecToString(specs))
+                    for _, item in ipairs(saved.items or {}) do
+                        if not SKIP_SLOTS[item.slot] then
+                            DEFAULT_CHAT_FRAME:AddMessage(ItemDisplay(item))
+                        end
+                    end
+                end
+                DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[장비디버그]|r " .. name .. " 완료: " .. ilvl .. SpecToString(specs))
             end
             return
         end
@@ -361,7 +377,10 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
                 if gearDebugMode then
                     if fromTarget then
                         local saved = MyGreetingDB.gearData[name]
-                        DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r DB저장: " .. name .. "  " .. ScoreStr(saved) .. "  아이템 " .. #(saved.items or {}) .. "개" .. SpecToString(specs))
+                        DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r DB저장: " .. name .. "  " .. ScoreStr(saved) .. SpecToString(specs))
+                        for _, item in ipairs(saved.items or {}) do
+                            DEFAULT_CHAT_FRAME:AddMessage(ItemDisplay(item))
+                        end
                     end
                     DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[장비디버그]|r " .. name .. " 완료: " .. ilvl .. SpecToString(specs))
                 end
@@ -466,26 +485,34 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom)
     end
 end
 
-local function ItemDisplay(item)
-    local slotName = SLOT_NAMES[item.slot] or "?"
-    local ilvl     = "[" .. item.ilvl .. "]"
-    if item.link then
-        return slotName .. " " .. ilvl .. " " .. item.link
-    else
-        return slotName .. " " .. ilvl .. " " .. (item.name or "?")
-    end
-end
-
 local function PrintItems(items, whisperTo)
     if not items or #items == 0 then return end
-    local isLocal  = (whisperTo == "LOCAL")
-    local interval = isLocal and 0 or 0.4
-    for i, item in ipairs(items) do
-        local line = ItemDisplay(item)
-        if interval == 0 then
-            GearSend(line, whisperTo)
-        else
-            C_Timer.After(i * interval, function() GearSend(line, whisperTo) end)
+
+    local filtered = {}
+    for _, item in ipairs(items) do
+        if not SKIP_SLOTS[item.slot] then
+            filtered[#filtered + 1] = item
+        end
+    end
+    if #filtered == 0 then return end
+
+    if whisperTo == "LOCAL" then
+        for _, item in ipairs(filtered) do
+            GearSend(ItemDisplay(item), whisperTo)
+        end
+    else
+        -- 3개씩 묶어서 한 메시지로 전송
+        local msgIdx = 0
+        local i = 1
+        while i <= #filtered do
+            local parts = {}
+            for j = i, math.min(i + 2, #filtered) do
+                parts[#parts + 1] = ItemDisplay(filtered[j])
+            end
+            local line = table.concat(parts, " / ")
+            msgIdx = msgIdx + 1
+            C_Timer.After(msgIdx * 0.8, function() GearSend(line, whisperTo) end)
+            i = i + 3
         end
     end
 end
@@ -517,5 +544,30 @@ function MyGreeting_GetGearScore(name, whisperTo)
         end
     else
         PrintItems(info.items, whisperTo)
+    end
+end
+
+function MyGreeting_GetGearSlot(name, slotIds, whisperTo)
+    local data = MyGreetingDB and MyGreetingDB.gearData
+    if not data or not data[name] then
+        GearSend(name .. " 데이터 없음", whisperTo)
+        return
+    end
+    local info = data[name]
+    if not info.items or #info.items == 0 then
+        GearSend(name .. " 장비 목록 없음 — 근처에서 타겟하면 자동 갱신", whisperTo)
+        return
+    end
+    local slotSet = {}
+    for _, s in ipairs(slotIds) do slotSet[s] = true end
+    local found = false
+    for _, item in ipairs(info.items) do
+        if slotSet[item.slot] then
+            GearSend(name .. "  " .. ItemDisplay(item), whisperTo)
+            found = true
+        end
+    end
+    if not found then
+        GearSend(name .. " 해당 슬롯 장비 없음", whisperTo)
     end
 end
