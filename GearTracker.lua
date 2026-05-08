@@ -218,7 +218,7 @@ local function ScanGroup()
         local u = prefix .. i
         if UnitExists(u) then
             local idx = i
-            C_Timer.After(idx * 2, function()
+            C_Timer.After(idx * 3, function()
                 TryInspect(prefix .. idx)
             end)
         end
