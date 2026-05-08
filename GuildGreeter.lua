@@ -1294,9 +1294,15 @@ SlashCmdList["MYGREETING"] = function(msg)
         end
 
     elseif msg == "장비" then
-        local me = UnitName("player")
-        me = me and (me:match("^([^%-]+)") or me)
-        if me and MyGreeting_GetGearScore then MyGreeting_GetGearScore(me, "LOCAL") end
+        local name
+        if UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
+            name = UnitName("target")
+            name = name and (name:match("^([^%-]+)") or name)
+        else
+            name = UnitName("player")
+            name = name and (name:match("^([^%-]+)") or name)
+        end
+        if name and MyGreeting_GetGearScore then MyGreeting_GetGearScore(name, "LOCAL") end
 
     elseif msg == "장비순위" then
         if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", true) end
