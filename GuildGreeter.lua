@@ -1056,7 +1056,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 HandleGuildRaceList(RACE_KEYWORDS["!" .. sub], wt)
             elseif PROF_CMD_KEYWORDS["!" .. sub] then
                 HandleGuildProfList(PROF_CMD_KEYWORDS["!" .. sub], wt)
-            elseif sub == "장비" or sub == "장비순위" then
+            elseif sub == "장비" then
+                if MyGreeting_GetGearScore then MyGreeting_GetGearScore(sender, wt) end
+            elseif sub == "장비순위" then
                 if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt) end
             else
                 local gearT = sub:match("^장비 (.+)$")
@@ -1161,7 +1163,12 @@ SlashCmdList["MYGREETING"] = function(msg)
             GG_Send(targetName .. " 신규 처리로 변경.", "LOCAL")
         end
 
-    elseif msg == "장비" or msg == "장비순위" then
+    elseif msg == "장비" then
+        local me = UnitName("player")
+        me = me and (me:match("^([^%-]+)") or me)
+        if me and MyGreeting_GetGearScore then MyGreeting_GetGearScore(me, "LOCAL") end
+
+    elseif msg == "장비순위" then
         if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL") end
 
     elseif msg == "장비초기화" then
