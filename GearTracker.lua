@@ -261,7 +261,9 @@ local function CollectSelf(retry)
     if not MyGreetingDB then return end
     if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
     MyGreetingDB.gearData[name] = { score = score, date = date("%m/%d %H:%M"), specs = specs, items = items }
-    DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r 내 장비점수 수집완료: " .. score)
+    if gearDebugMode then
+        DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r 내 장비점수 수집완료: " .. score)
+    end
 end
 
 function MyGreeting_GearDebugMode(on)
@@ -309,8 +311,10 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
             if not MyGreetingDB then return end
             if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
             MyGreetingDB.gearData[name] = { score = score, date = date("%m/%d %H:%M"), specs = specs, items = items }
-            DEFAULT_CHAT_FRAME:AddMessage(
-                "|cff40FF40[myGreeting]|r " .. name .. " 장비점수 수집: " .. score .. SpecToString(specs))
+            if gearDebugMode then
+                DEFAULT_CHAT_FRAME:AddMessage(
+                    "|cff40FF40[myGreeting]|r " .. name .. " 장비점수 수집: " .. score .. SpecToString(specs))
+            end
         end
 
     elseif event == "PLAYER_TARGET_CHANGED" then
