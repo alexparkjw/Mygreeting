@@ -178,19 +178,26 @@ local function TryInspect(unit)
 
     if gearDebugMode then
         local canInspect = CanInspect(unit)
-        local isGuild    = IsGuildMember(name)
         local isBusy     = inspecting ~= nil
         local now        = GetTime()
         local coolLeft   = cooldowns[name] and math.floor(INSPECT_COOLDOWN_SEC - (now - cooldowns[name])) or 0
         local cached     = MyGreetingDB and MyGreetingDB.gearData and MyGreetingDB.gearData[name]
         local cacheStr   = cached and (cached.score .. "점 (" .. cached.date .. ")") or "없음"
+
+        local skip = nil
+        if isBusy then
+            skip = "수집중 (busy)"
+        elseif not canInspect then
+            skip = "inspect 불가 (범위 밖/반대진영)"
+        elseif coolLeft > 0 then
+            skip = "쿨다운 " .. coolLeft .. "s"
+        end
+
+        local status = skip and ("|cffFF6060스킵: " .. skip .. "|r") or "|cff40FF40수집 시도→|r"
         DEFAULT_CHAT_FRAME:AddMessage(
             "|cffFFFF00[장비디버그]|r " .. name ..
             "  캐시=" .. cacheStr ..
-            "  inspect가능=" .. tostring(canInspect) ..
-            "  길드=" .. tostring(isGuild) ..
-            "  busy=" .. tostring(isBusy) ..
-            "  쿨다운=" .. coolLeft .. "s")
+            "  " .. status)
     end
 
     if inspecting then return end
