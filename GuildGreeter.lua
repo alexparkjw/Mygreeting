@@ -423,7 +423,12 @@ local function HandleGuildCharInfo(targetName, whisperTo)
                     local onlineStr  = isOnline and "O 접속중" or "X 오프라인"
                     local zoneStr    = (zone and zone ~= "") and zone or "-"
                     local noteStr    = (publicNote and publicNote ~= "") and publicNote or "-"
-                    GG_Send(shortName .. " [" .. rankName .. "]  " .. race .. " " .. className .. "  " .. level .. "레벨  " .. onlineStr, whisperTo)
+                    local gsStr = ""
+                    local gearInfo = MyGreetingDB and MyGreetingDB.gearData and MyGreetingDB.gearData[shortName]
+                    if gearInfo then
+                        gsStr = "  /  GS: " .. gearInfo.score
+                    end
+                    GG_Send(shortName .. " [" .. rankName .. "]  " .. race .. " " .. className .. "  " .. level .. "레벨  " .. onlineStr .. gsStr, whisperTo)
                     GG_Send("지역: " .. zoneStr .. "  /  쪽지: " .. noteStr, whisperTo)
                     return
                 end
