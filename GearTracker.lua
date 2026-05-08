@@ -178,6 +178,10 @@ local function TryInspect(unit)
     if not name then return end
     name = name:match("^([^%-]+)") or name
 
+    local pf = UnitFactionGroup("player")
+    local uf = UnitFactionGroup(unit)
+    if pf and uf and pf ~= uf then return end
+
     local now = GetTime()
     if lastTryTime[name] and (now - lastTryTime[name]) < 1 then return end
     lastTryTime[name] = now
