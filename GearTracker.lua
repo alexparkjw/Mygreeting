@@ -192,7 +192,6 @@ local function TryInspect(unit)
 
     if inspecting then return end
     if not CanInspect(unit) then return end
-    if not IsGuildMember(name) then return end
 
     local now = GetTime()
     if cooldowns[name] and (now - cooldowns[name]) < INSPECT_COOLDOWN_SEC then return end
@@ -327,7 +326,9 @@ function MyGreeting_PrintGearRank(whisperTo)
 
     local list = {}
     for name, info in pairs(data) do
-        list[#list + 1] = { name = name, score = info.score, date = info.date, specs = info.specs }
+        if IsGuildMember(name) then
+            list[#list + 1] = { name = name, score = info.score, date = info.date, specs = info.specs }
+        end
     end
     table.sort(list, function(a, b) return a.score > b.score end)
 
