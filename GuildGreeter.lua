@@ -588,25 +588,11 @@ local function HandleGuildCommand(cmd, whisperTo)
     end
 
     if cmd == "help" then
-        GG_Send("!현황 - 길드 접속 현황", whisperTo)
-        GG_Send("!등급 - 등급별 목록", whisperTo)
-        GG_Send("!레벨 - 레벨 분포", whisperTo)
-        GG_Send("!종족 - 종족 분포", whisperTo)
-        GG_Send("!직업 - 직업 분포", whisperTo)
-        GG_Send("!지역 - 지역별 현황", whisperTo)
+        GG_Send("!현황 / !레벨 / !직업 / !종족 / !지역 / !인던 / !전문기술 / !등급", whisperTo)
         GG_Send("!정보 [이름] - 길드원 상세 정보", whisperTo)
-        GG_Send("!인던 - 던전 입장 현황", whisperTo)
-        GG_Send("!전문기술 - 전문기술 분포", whisperTo)
-        GG_Send("!장비 - 내 장비점수", whisperTo)
-        GG_Send("!장비 [이름] - 특정 길드원 장비점수", whisperTo)
-        GG_Send("!장비길드 - 길드원 장비점수 순위", whisperTo)
-        GG_Send("!장비전체 - 수집된 전원 순위", whisperTo)
-        GG_Send("!길드[명령어] - 위 명령어를 길드창에 표시  예) !길드현황", whisperTo)
-        GG_Send("─── 기타 ───", whisperTo)
-        GG_Send("!도움 종족 - 종족별 멤버 검색 키워드", whisperTo)
-        GG_Send("!도움 직업 - 직업별 멤버 검색 키워드", whisperTo)
-        GG_Send("!도움 장비 - 장비 명령어 목록", whisperTo)
-        GG_Send("!도움 전문기술 - 전문기술별 멤버 검색 키워드", whisperTo)
+        GG_Send("!장비 / !장비 [이름] / !장비길드 / !장비전체", whisperTo)
+        GG_Send("!길드[명령어] - 길드챗에 출력  예) !길드현황", whisperTo)
+        GG_Send("!도움 직업 / !도움 종족 / !도움 전문기술 / !도움 장비 / !도움 일정", whisperTo)
     elseif cmd == "help_class" then
         GG_Send("직업별 멤버목록: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드 !죽기", whisperTo)
     elseif cmd == "help_race" then
@@ -1262,7 +1248,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
             lower:find("먼저 잡니다") or lower:find("먼저잡니다") or
             lower:find("이만 가보겠") or lower:find("이만가보겠") or
             lower:find("이만 갑니다") or lower:find("이만갑니다") or
-            lower:find("이만 가겠") or lower:find("이만가겠")
+            lower:find("이만 가겠") or lower:find("이만가겠") or
+            lower:find("가봐야겠") or
+            lower:find("그런것도 푹쉬") or lower:find("그런것도푹쉬") or
+            lower:find("그런 것도 푹쉬") or lower:find("그런 것도푹쉬")
 
         if isSleepMsg then
             local s = sender
@@ -1293,45 +1282,17 @@ SlashCmdList["MYGREETING"] = function(msg)
 
     if lower == "help" or lower == "" then
         local L = "LOCAL"
-        GG_Send("─── 기본 ───", L)
-        GG_Send("/mg reset - 신규 목록 초기화", L)
-        GG_Send("/mg remove [이름] - 특정 멤버 신규 처리", L)
-        GG_Send("/mg status - 애드온 상태", L)
-        GG_Send("/mg db - 부캐 DB 출력", L)
-        GG_Send("─── 조회 (나만 보임) ───", L)
-        GG_Send("/mg 현황 - 길드 접속 현황", L)
-        GG_Send("/mg 등급 [등급명] - 등급별 목록", L)
-        GG_Send("/mg 레벨 - 레벨 분포", L)
-        GG_Send("/mg 종족 - 종족 분포", L)
-        GG_Send("/mg 직업 - 직업 분포", L)
-        GG_Send("/mg 지역 - 지역별 현황", L)
-        GG_Send("/mg 정보 [이름] - 길드원 상세 정보", L)
-        GG_Send("/mg 인던 - 던전 입장 현황", L)
-        GG_Send("/mg 전문기술 - 전문기술 분포", L)
-        GG_Send("/mg 사제 / 오크 / 무두 - 직업·종족·전문기술 직접 검색", L)
-        GG_Send("─── 장비 ───", L)
-        GG_Send("/mg 장비 - 내 장비점수 + 장비 목록", L)
-        GG_Send("/mg 장비 [이름] - 특정 길드원 장비점수 + 장비 목록", L)
-        GG_Send("/mg 장비길드 - 길드원 장비점수 순위", L)
-        GG_Send("/mg 장비전체 - 수집된 전원 순위 (로컬)", L)
-        GG_Send("/mg 장비초기화 - 장비 데이터 전체 삭제", L)
-        GG_Send("─── 길드챗 (!길드[명령어] - 길드창에 표시) ───", L)
-        GG_Send("!현황 / !레벨 / !직업 / !종족 / !인던 / !지역 / !전문기술 / !등급", L)
-        GG_Send("!정보 [이름] - 길드원 상세 정보", L)
-        GG_Send("!장비 - 내 장비점수", L)
-        GG_Send("!장비 [이름] - 특정 길드원 장비점수", L)
-        GG_Send("!장비길드 - 길드원 장비점수 순위", L)
-        GG_Send("!장비전체 - 수집된 전원 순위", L)
-        GG_Send("!머리/목/어깨/등/가슴/벨트/다리/발/손목/손 [이름]", L)
-        GG_Send("!손가락/장신구/주장비/보조장비/원거리 [이름]", L)
-        GG_Send("!도움 장비 - 슬롯 명령어 전체 목록", L)
-        GG_Send("!도움 - 길드챗 도움말", L)
-        GG_Send("─── 기타 ───", L)
-        GG_Send("!도움 종족 - 종족별 멤버 검색 키워드", L)
-        GG_Send("!도움 직업 - 직업별 멤버 검색 키워드", L)
-        GG_Send("!도움 장비 - 장비 명령어 목록", L)
-        GG_Send("!도움 전문기술 - 전문기술별 멤버 검색 키워드", L)
-        GG_Send("!도움 일정 - 일일/주간 일정 등록·조회 방법", L)
+        GG_Send("─── /mg 명령어 ───", L)
+        GG_Send("/mg 현황 / 레벨 / 직업 / 종족 / 지역 / 인던 / 전문기술", L)
+        GG_Send("/mg 등급 [등급명] / 정보 [이름]", L)
+        GG_Send("/mg 장비 [이름] / 장비길드 / 장비전체 / 장비[직업명]", L)
+        GG_Send("/mg 장비초기화 / 장비디버그온 / 장비디버그오프", L)
+        GG_Send("/mg reset / remove [이름] / status / db", L)
+        GG_Send("─── 길드챗 명령어 (!도움 으로 상세 확인) ───", L)
+        GG_Send("!현황 / !레벨 / !직업 / !종족 / !지역 / !인던 / !전문기술 / !등급", L)
+        GG_Send("!정보 [이름] / !장비 [이름] / !장비길드 / !장비전체", L)
+        GG_Send("!머리/목/어깨/등/가슴/벨트/다리/발/손목/손/손가락/장신구/주장비/보조장비/원거리 [이름]", L)
+        GG_Send("!도움 직업 / !도움 종족 / !도움 전문기술 / !도움 장비 / !도움 일정", L)
 
     elseif lower == "reset" then
         if db then
