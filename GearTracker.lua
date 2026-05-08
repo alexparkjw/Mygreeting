@@ -464,7 +464,7 @@ function MyGreeting_GetGearScore(name, whisperTo)
     local info = data[name]
     GearSend(name .. "  장비점수: " .. info.score .. "점" .. SpecToString(info.specs) .. "  (수집: " .. info.date .. ")", whisperTo)
 
-    if not info.items then
+    if not info.items or #info.items == 0 then
         -- 구버전 데이터 — 본인이면 즉시 재수집
         local myName = UnitName("player")
         myName = myName and (myName:match("^([^%-]+)") or myName)
