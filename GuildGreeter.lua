@@ -1160,7 +1160,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 if MyGreeting_GetGearScore then MyGreeting_GetGearScore(sender, wt) end
             elseif sub == "장비순위" then
                 if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, true) end
-            elseif sub == "전체장비순위" then
+            elseif sub == "전체장비" then
                 if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, false) end
             else
                 local gearT = sub:match("^장비 (.+)$")
@@ -1307,7 +1307,7 @@ SlashCmdList["MYGREETING"] = function(msg)
     elseif msg == "장비순위" then
         if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", true) end
 
-    elseif msg == "전체장비순위" then
+    elseif msg == "전체장비" then
         if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", false) end
 
     elseif msg == "장비초기화" then
