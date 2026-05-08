@@ -508,7 +508,6 @@ local function HandleGuildCommand(cmd, whisperTo)
         GG_Send("!정보 [이름] - 길드원 상세 정보", whisperTo)
         GG_Send("!장비 - 내 장비점수  /  !장비 [이름] - 특정 길드원 장비점수", whisperTo)
         GG_Send("!장비순위 - 전체 순위", whisperTo)
-        GG_Send("!길드XXX - 위 명령어 앞에 붙이면 길드창에 표시  예) !길드장비순위", whisperTo)
         GG_Send("!도움 직업 / !도움 종족 / !도움 전문기술 / !도움 일정", whisperTo)
     elseif cmd == "help_class" then
         GG_Send("직업별 멤버목록: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드 !죽기", whisperTo)
