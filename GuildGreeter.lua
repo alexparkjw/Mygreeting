@@ -1164,12 +1164,13 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, false) end
             else
                 local guildFrom = sub:match("^장비길드 (%d+)$")
-                if guildFrom and MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, true, tonumber(guildFrom)) end
-                local allFrom = sub:match("^장비전체 (%d+)$")
-                if allFrom and MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, false, tonumber(allFrom)) end
-            else
-                local gearT = sub:match("^장비 (.+)$")
-                if gearT then
+                local allFrom   = sub:match("^장비전체 (%d+)$")
+                local gearT     = sub:match("^장비 (.+)$")
+                if guildFrom and MyGreeting_PrintGearRank then
+                    MyGreeting_PrintGearRank(wt, true, tonumber(guildFrom))
+                elseif allFrom and MyGreeting_PrintGearRank then
+                    MyGreeting_PrintGearRank(wt, false, tonumber(allFrom))
+                elseif gearT then
                     if MyGreeting_GetGearScore then MyGreeting_GetGearScore(strtrim(gearT), wt) end
                 else
                     local infoT = sub:match("^정보%s+(.+)$")
