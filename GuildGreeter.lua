@@ -1201,6 +1201,7 @@ end)
 -- ============================================================
 SLASH_MYGREETING1 = "/mg"
 SLASH_MYGREETING2 = "/mygreeting"
+SLASH_MYGREETING3 = "/엠지"
 
 SlashCmdList["MYGREETING"] = function(msg)
     msg = strtrim(msg or "")
