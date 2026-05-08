@@ -194,7 +194,13 @@ local function TryInspect(unit)
         if isBusy then
             skip = "수집중 (busy)"
         elseif not canInspect then
-            skip = "inspect 불가 (범위 밖/반대진영)"
+            local pf = UnitFactionGroup("player")
+            local uf = UnitFactionGroup(unit)
+            if pf and uf and pf ~= uf then
+                skip = "inspect 불가 (타진영)"
+            else
+                skip = "inspect 불가 (범위 밖)"
+            end
         elseif coolLeft > 0 then
             skip = "쿨다운 " .. coolLeft .. "s"
         end
