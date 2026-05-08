@@ -499,9 +499,34 @@ local function GetDailyInfo(key)
     return entry
 end
 
+-- Nova World Buffs 애드온에서 오늘 일일 던전 이름을 읽어옴
+local function GetNWBDailyName(key)
+    if not NWB or not NWB.data then return nil end
+    local id, ts, getData
+    if key == "dailyNormal" then
+        id, ts, getData = NWB.data.tbcDD, NWB.data.tbcDDT, function(i) return NWB:getDungeonDailyData(i) end
+    elseif key == "dailyHeroic" then
+        id, ts, getData = NWB.data.tbcHD, NWB.data.tbcHDT, function(i) return NWB:getHeroicDailyData(i) end
+    else
+        return nil
+    end
+    if not id or id == 0 then return nil end
+    if not ts or (GetServerTime() - ts) >= 86400 then return nil end
+    local ok, d = pcall(getData, id)
+    if not ok or not d then return nil end
+    local name = d.nameLocale or d.dungeon or "?"
+    local abbrev = d.abbrev and ("(" .. d.abbrev .. ")") or ""
+    return name .. " " .. abbrev
+end
+
 local function HandleDailyQuery(key, whisperTo)
-    local entry = GetDailyInfo(key)
     local label = DAILY_LABEL[key] or key
+    local nwbName = GetNWBDailyName(key)
+    if nwbName then
+        GG_Send(label .. ": " .. nwbName .. "  [NWB]", whisperTo)
+        return
+    end
+    local entry = GetDailyInfo(key)
     if entry then
         GG_Send(label .. ": " .. entry.value .. "  (설정: " .. entry.setter .. ")", whisperTo)
     else
@@ -511,8 +536,12 @@ end
 
 local function HandleDailyAll(whisperTo)
     local function line(key)
-        local entry = GetDailyInfo(key)
         local label = DAILY_LABEL[key] or key
+        local nwbName = GetNWBDailyName(key)
+        if nwbName then
+            return label .. ": " .. nwbName .. "  [NWB]"
+        end
+        local entry = GetDailyInfo(key)
         if entry then
             return label .. ": " .. entry.value .. "  (설정: " .. entry.setter .. ")"
         else
