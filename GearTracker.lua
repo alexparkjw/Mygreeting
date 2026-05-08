@@ -360,16 +360,21 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly)
     end
     table.sort(list, function(a, b) return a.score > b.score end)
 
+    local RANK_LIMIT = 20
+    local total = #list
+    if #list > RANK_LIMIT then list[RANK_LIMIT + 1] = nil end
+
     local title = guildOnly and "길드원 장비점수 순위" or "전체 장비점수 순위"
+    local suffix = total > RANK_LIMIT and (" (상위 " .. RANK_LIMIT .. "/" .. total .. "명)") or (" (" .. total .. "명)")
     local wt = whisperTo
     if wt == "LOCAL" then
-        GearSend(title .. " (" .. #list .. "명):", wt)
+        GearSend(title .. suffix .. ":", wt)
         for i, e in ipairs(list) do
             GearSend(i .. ". " .. e.name .. "  " .. e.score .. "점" .. SpecToString(e.specs) .. "  (" .. e.date .. ")", wt)
         end
     else
         local interval = (wt ~= nil) and 0.4 or 1.5
-        GearSend(title .. " (" .. #list .. "명):", wt)
+        GearSend(title .. suffix .. ":", wt)
         for i, e in ipairs(list) do
             local line = i .. ". " .. e.name .. "  " .. e.score .. "점" .. SpecToString(e.specs) .. "  (" .. e.date .. ")"
             local d = i * interval
