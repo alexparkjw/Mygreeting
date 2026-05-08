@@ -29,6 +29,7 @@ local CLASS_SPECS = {
 
 local inspecting  = nil
 local cooldowns   = {}
+local lastTryTime = {}  -- 중복 호출 방지용 (1초 이내 동일 유닛 재호출 무시)
 
 local function IsGuildMember(name)
     local total = GetNumGuildMembers()
@@ -176,6 +177,10 @@ local function TryInspect(unit)
     if not name then return end
     name = name:match("^([^%-]+)") or name
 
+    local now = GetTime()
+    if lastTryTime[name] and (now - lastTryTime[name]) < 1 then return end
+    lastTryTime[name] = now
+
     if gearDebugMode then
         local canInspect = CanInspect(unit)
         local isBusy     = inspecting ~= nil
@@ -203,7 +208,6 @@ local function TryInspect(unit)
     if inspecting then return end
     if not CanInspect(unit) then return end
 
-    local now = GetTime()
     if cooldowns[name] and (now - cooldowns[name]) < INSPECT_COOLDOWN_SEC then return end
 
     inspecting = { unit = unit, name = name, guid = UnitGUID(unit) }
