@@ -517,13 +517,23 @@ local function HandleGuildCommand(cmd, whisperTo)
         GG_Send("!장비 [이름] - 특정 길드원 장비점수", whisperTo)
         GG_Send("!장비순위 - 전체 장비점수 순위", whisperTo)
         GG_Send("!길드[명령어] - 위 명령어를 길드창에 표시  예) !길드현황", whisperTo)
-        GG_Send("!도움 직업 / !도움 종족 / !도움 전문기술 / !도움 일정", whisperTo)
+        GG_Send("─── 기타 ───", whisperTo)
+        GG_Send("!도움 종족 - 종족별 멤버 검색 키워드", whisperTo)
+        GG_Send("!도움 직업 - 직업별 멤버 검색 키워드", whisperTo)
+        GG_Send("!도움 장비 - 장비 명령어 목록", whisperTo)
+        GG_Send("!도움 전문기술 - 전문기술별 멤버 검색 키워드", whisperTo)
+        GG_Send("!도움 일정 - 일정 등록/조회 방법", whisperTo)
     elseif cmd == "help_class" then
         GG_Send("직업별 멤버목록: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드 !죽기", whisperTo)
     elseif cmd == "help_race" then
         GG_Send("종족별 멤버목록: !오크 !언데드 !타우렌 !트롤 !혈요정 !인간 !드워프 !나엘 !노움 !드레나이", whisperTo)
     elseif cmd == "help_prof" then
         GG_Send("전문기술별 멤버목록: !대장 !재봉 !연금 !기공 !가세 !보세 !약초 !채광 !마부 !무두 !요리 !낚시", whisperTo)
+    elseif cmd == "help_gear" then
+        GG_Send("!장비 - 내 장비점수 + 장비 목록", whisperTo)
+        GG_Send("!장비 [이름] - 특정 길드원 장비점수 + 장비 목록", whisperTo)
+        GG_Send("!장비순위 - 전체 장비점수 순위", whisperTo)
+        GG_Send("!길드장비 / !길드장비 [이름] / !길드장비순위 - 길드창에 표시", whisperTo)
     elseif cmd == "help_daily" then
         GG_Send("일정 등록 (길드챗): !일일일던 [이름]  /  !일일영던 [이름]  /  !주간전장 [이름]", whisperTo)
         GG_Send("일정 조회: !일던  !영던  !전장  (값 없이 등록 명령어 치면 초기화)", whisperTo)
@@ -1049,7 +1059,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 ["종족"]="races",  ["인던"]="dungeon", ["지역"]="zones",
                 ["전문기술"]="profs", ["등급"]="ranks",
                 ["도움"]="help", ["도움 직업"]="help_class",
-                ["도움 종족"]="help_race", ["도움 전문기술"]="help_prof", ["도움 일정"]="help_daily",
+                ["도움 종족"]="help_race", ["도움 전문기술"]="help_prof", ["도움 일정"]="help_daily", ["도움 장비"]="help_gear",
             }
             local setKey, setValue = sub:match("^(%S+)%s+(.+)$")
 
@@ -1195,6 +1205,12 @@ SlashCmdList["MYGREETING"] = function(msg)
         GG_Send("!장비 [이름] - 특정 길드원 장비점수", L)
         GG_Send("!장비순위 - 전체 장비점수 순위", L)
         GG_Send("!도움 - 길드챗 도움말", L)
+        GG_Send("─── 기타 ───", L)
+        GG_Send("!도움 종족 - 종족별 멤버 검색 키워드", L)
+        GG_Send("!도움 직업 - 직업별 멤버 검색 키워드", L)
+        GG_Send("!도움 장비 - 장비 명령어 목록", L)
+        GG_Send("!도움 전문기술 - 전문기술별 멤버 검색 키워드", L)
+        GG_Send("!도움 일정 - 일정 등록/조회 방법", L)
 
     elseif lower == "reset" then
         if db then
@@ -1258,7 +1274,7 @@ SlashCmdList["MYGREETING"] = function(msg)
             ["종족"]="races",  ["인던"]="dungeon", ["지역"]="zones",
             ["전문기술"]="profs", ["등급"]="ranks",
             ["도움"]="help", ["도움 직업"]="help_class",
-            ["도움 종족"]="help_race", ["도움 전문기술"]="help_prof",
+            ["도움 종족"]="help_race", ["도움 전문기술"]="help_prof", ["도움 장비"]="help_gear",
         }
         local mapped = CMD_MAP[msg]
         local SL_DAILY_GET = { ["일던"]="dailyNormal", ["영던"]="dailyHeroic", ["전장"]="weeklyBG" }
