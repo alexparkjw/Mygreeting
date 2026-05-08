@@ -11,7 +11,7 @@ local SLOT_NAMES = {
     [17]="주무기", [18]="보조", [19]="원거리",
 }
 
-local INSPECT_COOLDOWN_SEC = 60
+local INSPECT_COOLDOWN_SEC = 30
 
 -- 클래스별 특성 탭 이름 (GetTalentTabInfo 가 이름을 못 돌려줄 때 폴백)
 local CLASS_SPECS = {
