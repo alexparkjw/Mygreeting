@@ -579,7 +579,6 @@ local function HandleGuildCommand(cmd, whisperTo)
         GG_Send("!도움 직업 - 직업별 멤버 검색 키워드", whisperTo)
         GG_Send("!도움 장비 - 장비 명령어 목록", whisperTo)
         GG_Send("!도움 전문기술 - 전문기술별 멤버 검색 키워드", whisperTo)
-        GG_Send("!도움 일정 - 일정 등록/조회 방법", whisperTo)
     elseif cmd == "help_class" then
         GG_Send("직업별 멤버목록: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드 !죽기", whisperTo)
     elseif cmd == "help_race" then
@@ -1285,7 +1284,6 @@ SlashCmdList["MYGREETING"] = function(msg)
         GG_Send("!도움 직업 - 직업별 멤버 검색 키워드", L)
         GG_Send("!도움 장비 - 장비 명령어 목록", L)
         GG_Send("!도움 전문기술 - 전문기술별 멤버 검색 키워드", L)
-        GG_Send("!도움 일정 - 일정 등록/조회 방법", L)
 
     elseif lower == "reset" then
         if db then
