@@ -302,20 +302,32 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
             return
         end
 
-        local score, items = CollectGear(inspecting.unit)
-        local specs = GetSpecInfo(true, inspecting.unit)
-        local name  = inspecting.name
-        inspecting  = nil
+        local unit = inspecting.unit
+        local name = inspecting.name
+        inspecting = nil
 
-        if score then
-            if not MyGreetingDB then return end
-            if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
-            MyGreetingDB.gearData[name] = { score = score, date = date("%m/%d %H:%M"), specs = specs, items = items }
-            if gearDebugMode then
-                DEFAULT_CHAT_FRAME:AddMessage(
-                    "|cff40FF40[myGreeting]|r " .. name .. " 장비점수 수집: " .. score .. SpecToString(specs))
+        local function TrySave(retry)
+            local score, items = CollectGear(unit)
+            local specs = GetSpecInfo(true, unit)
+            if score then
+                if not MyGreetingDB then return end
+                if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
+                MyGreetingDB.gearData[name] = { score = score, date = date("%m/%d %H:%M"), specs = specs, items = items }
+                if gearDebugMode then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[장비디버그]|r " .. name .. " 완료: " .. score .. SpecToString(specs))
+                end
+            elseif retry > 0 then
+                if gearDebugMode then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cffFFAA00[장비디버그]|r " .. name .. " 대기중 (재시도 " .. retry .. ")")
+                end
+                C_Timer.After(0.5, function() TrySave(retry - 1) end)
+            else
+                if gearDebugMode then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cffFF4040[장비디버그]|r " .. name .. " 실패 (캐시 없음)")
+                end
             end
         end
+        TrySave(3)
 
     elseif event == "PLAYER_TARGET_CHANGED" then
         TryInspect("target")
