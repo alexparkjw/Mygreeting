@@ -1284,6 +1284,7 @@ SlashCmdList["MYGREETING"] = function(msg)
         GG_Send("!도움 직업 - 직업별 멤버 검색 키워드", L)
         GG_Send("!도움 장비 - 장비 명령어 목록", L)
         GG_Send("!도움 전문기술 - 전문기술별 멤버 검색 키워드", L)
+        GG_Send("!도움 일정 - 일일/주간 일정 등록·조회 방법", L)
 
     elseif lower == "reset" then
         if db then
