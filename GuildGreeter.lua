@@ -398,7 +398,11 @@ end
 
 local function HandleGuildCharInfo(targetName, whisperTo)
     targetName = strtrim(targetName)
-    if targetName == "" then return end
+    if targetName == "" then
+        local me = UnitName("player")
+        targetName = me and (me:match("^([^%-]+)") or me) or ""
+        if targetName == "" then return end
+    end
 
     if not whisperTo then
         local now = GetTime()
