@@ -54,21 +54,26 @@ local function GetGearScoreFromCache(unit)
 end
 
 local function CollectGear(unit)
-    local gs = GetGearScoreFromCache(unit)
-    if not gs or gs <= 0 then return nil, nil end
-
     local items = {}
+    local totalIlvl, count = 0, 0
     for _, slot in ipairs(GEAR_SLOTS) do
         local link = GetInventoryItemLink(unit, slot)
         if link then
             local _, _, quality, ilvl = GetItemInfo(link)
             if ilvl and ilvl > 0 then
                 items[#items + 1] = { slot = slot, link = link, ilvl = ilvl, quality = quality }
+                totalIlvl = totalIlvl + ilvl
+                count = count + 1
             end
         end
     end
 
-    return math.floor(gs), items
+    if count == 0 then return nil, nil end
+
+    -- GearScore 캐시 우선, 없으면 평균 ilvl로 대체
+    local gs = GetGearScoreFromCache(unit)
+    local score = (gs and gs > 0) and math.floor(gs) or math.floor(totalIlvl / count)
+    return score, items
 end
 
 local function ReadTalentTab(tabIndex, isInspect, group)
