@@ -114,6 +114,7 @@ local guildCmdCooldown = {} -- [커맨드] = GetTime() : 길드 명령 중복 �
 -- ============================================================
 local function GG_Print(msg)
     if not msg or msg == "" then return end
+    if UnitIsAFK("player") then msg = "<자리비움> " .. msg end
     local box = ChatFrame1EditBox
     if box and box:IsVisible() then
         C_Timer.After(2, function()
