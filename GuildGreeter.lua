@@ -482,7 +482,16 @@ local function GetDailyInfo(key)
     if not db or not db.dailyInfo then return nil end
     local entry = db.dailyInfo[key]
     if not entry then return nil end
-    if entry.date ~= date("%Y-%m-%d") then return nil end  -- 날짜 만료
+    if key == "weeklyBG" then
+        -- 주간 전장은 월요일 기준 주간 체크
+        local t = date("*t")
+        local weekday = t.wday  -- 1=일, 2=월 ... 7=토
+        local daysSinceMon = (weekday - 2) % 7
+        local monDate = date("%Y-%m-%d", time() - daysSinceMon * 86400)
+        if (entry.weekStart or "") ~= monDate then return nil end
+    else
+        if entry.date ~= date("%Y-%m-%d") then return nil end
+    end
     return entry
 end
 
@@ -492,8 +501,23 @@ local function HandleDailyQuery(key, whisperTo)
     if entry then
         GG_Send(label .. ": " .. entry.value .. "  (설정: " .. entry.setter .. ")", whisperTo)
     else
-        GG_Send(label .. " 정보 없음 — 길드챗에 !일일일던/!일일영던/!주간전장 [이름] 으로 등록해주세요", whisperTo)
+        GG_Send(label .. " 정보 없음", whisperTo)
     end
+end
+
+local function HandleDailyAll(whisperTo)
+    local function line(key)
+        local entry = GetDailyInfo(key)
+        local label = DAILY_LABEL[key] or key
+        if entry then
+            return label .. ": " .. entry.value .. "  (설정: " .. entry.setter .. ")"
+        else
+            return label .. ": 미등록"
+        end
+    end
+    GG_Send(line("dailyNormal"), whisperTo)
+    GG_Send(line("dailyHeroic"), whisperTo)
+    GG_Send(line("weeklyBG"), whisperTo)
 end
 
 local function HandleGuildCommand(cmd, whisperTo)
@@ -1075,15 +1099,22 @@ frame:SetScript("OnEvent", function(self, event, ...)
             elseif setKey and DAILY_SET[setKey] then
                 -- "!일일영던 마나 무덤" → 저장 (로컬 /mg 제외)
                 if wt ~= "LOCAL" and db then
-                    db.dailyInfo[DAILY_SET[setKey]] = {
-                        value  = strtrim(setValue),
-                        date   = date("%Y-%m-%d"),
-                        setter = sender,
+                    local dbKey = DAILY_SET[setKey]
+                    local t = date("*t")
+                    local daysSinceMon = (t.wday - 2) % 7
+                    local monDate = date("%Y-%m-%d", time() - daysSinceMon * 86400)
+                    db.dailyInfo[dbKey] = {
+                        value     = strtrim(setValue),
+                        date      = date("%Y-%m-%d"),
+                        weekStart = monDate,
+                        setter    = sender,
                     }
                     DEFAULT_CHAT_FRAME:AddMessage(
                         "|cff40FF40[myGreeting]|r " .. DAILY_LABEL[DAILY_SET[setKey]] ..
                         " 등록: " .. strtrim(setValue) .. " (설정자: " .. sender .. ")")
                 end
+            elseif sub == "일일" then
+                HandleDailyAll(wt)
             elseif DAILY_GET[sub] then
                 HandleDailyQuery(DAILY_GET[sub], wt)
             elseif CLASS_KEYWORDS["!" .. sub] then
@@ -1280,6 +1311,8 @@ SlashCmdList["MYGREETING"] = function(msg)
         local SL_DAILY_GET = { ["일던"]="dailyNormal", ["영던"]="dailyHeroic", ["전장"]="weeklyBG" }
         if mapped then
             HandleGuildCommand(mapped, "LOCAL")
+        elseif msg == "일일" then
+            HandleDailyAll("LOCAL")
         elseif SL_DAILY_GET[msg] then
             HandleDailyQuery(SL_DAILY_GET[msg], "LOCAL")
         elseif CLASS_KEYWORDS["!" .. msg] then
