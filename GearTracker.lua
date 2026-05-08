@@ -445,25 +445,22 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom)
     end
 end
 
--- isLocal=로컬, isWhisper=귓말, 둘 다 아니면 길드챗(링크 불가)
-local function ItemDisplay(item, isLocal, isWhisper)
+local function ItemDisplay(item)
     local slotName = SLOT_NAMES[item.slot] or "?"
     local ilvl     = "[" .. item.ilvl .. "]"
-    if (isLocal or isWhisper) and item.link then
+    if item.link then
         return slotName .. " " .. ilvl .. " " .. item.link
     else
-        local name = item.link and (item.link:match("|h%[(.-)%]|h") or item.link) or (item.name or "?")
-        return slotName .. " " .. ilvl .. " " .. name
+        return slotName .. " " .. ilvl .. " " .. (item.name or "?")
     end
 end
 
 local function PrintItems(items, whisperTo)
     if not items or #items == 0 then return end
-    local isLocal   = (whisperTo == "LOCAL")
-    local isWhisper = (whisperTo ~= nil and whisperTo ~= "LOCAL")
-    local interval  = isLocal and 0 or 0.4
+    local isLocal  = (whisperTo == "LOCAL")
+    local interval = isLocal and 0 or 0.4
     for i, item in ipairs(items) do
-        local line = ItemDisplay(item, isLocal, isWhisper)
+        local line = ItemDisplay(item)
         if interval == 0 then
             GearSend(line, whisperTo)
         else
