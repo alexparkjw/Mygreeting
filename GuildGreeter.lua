@@ -126,6 +126,9 @@ end
 
 local function GG_Send(msg, whisperTo)
     if not msg or msg == "" then return end
+    if whisperTo ~= "LOCAL" and UnitIsAFK("player") then
+        msg = "<자리비움> " .. msg
+    end
     if whisperTo == "LOCAL" then
         DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r " .. msg)
     elseif whisperTo then
@@ -258,17 +261,17 @@ local GEAR_SLOT_CMDS = {
     ["목"]         = {2},
     ["어깨"]       = {3},
     ["가슴"]       = {5},
-    ["벨트"]       = {6},
+    ["벨트"]       = {6},  ["허리"]     = {6},
     ["다리"]       = {7},
-    ["발"]         = {8},
+    ["발"]         = {8},  ["신발"]     = {8},
     ["손목"]       = {9},
-    ["손"]         = {10},
+    ["손"]         = {10}, ["장갑"]     = {10},
     ["손가락"]     = {11, 12},
     ["장신구"]     = {13, 14},
-    ["등"]         = {15},
-    ["주장비"]     = {16},
-    ["보조장비"]   = {17},
-    ["원거리장비"] = {18},
+    ["등"]         = {15}, ["망토"]     = {15}, ["망또"]     = {15},
+    ["주장비"]     = {16}, ["주무기"]   = {16},
+    ["보조장비"]   = {17}, ["보조무기"] = {17},
+    ["원거리"]     = {18},
 }
 
 -- ============================================================
@@ -364,7 +367,7 @@ local RACE_KEYWORDS = {
     ["!포세이큰"]   = "포세이큰",
     ["!타우렌"]     = "타우렌",
     ["!트롤"]       = "트롤",
-    ["!혈요정"]     = "혈요정",
+    ["!블엘"]       = "블엘",
     ["!인간"]       = "인간",
     ["!드워프"]     = "드워프",
     ["!나엘"]       = "나이트 엘프",
@@ -373,7 +376,10 @@ local RACE_KEYWORDS = {
     ["!드레나이"]   = "드레나이",
 }
 
+local RACE_API_NAMES = { ["블엘"] = "혈요정" }
+
 local function CollectRaceMembers(raceName, callback)
+    local apiRace = RACE_API_NAMES[raceName] or raceName
     C_GuildInfo.GuildRoster()
     C_Timer.After(0.3, function()
         local members = {}
@@ -382,7 +388,7 @@ local function CollectRaceMembers(raceName, callback)
             local name, _, _, level, _, _, _, _, isOnline, _, _, _, _, _, _, _, guid = GetGuildRosterInfo(i)
             if isOnline and guid and guid ~= "" then
                 local _, _, localizedRace = GetPlayerInfoByGUID(guid)
-                if localizedRace == raceName then
+                if localizedRace == apiRace then
                     name = name:match("^([^%-]+)") or name
                     members[#members + 1] = { name = name, level = level }
                 end
@@ -442,7 +448,7 @@ local function HandleGuildCharInfo(targetName, whisperTo)
                         local _, _, localizedRace = GetPlayerInfoByGUID(guid)
                         if localizedRace and localizedRace ~= "" then race = localizedRace end
                     end
-                    local onlineStr  = isOnline and "O 접속중" or "X 오프라인"
+                    local onlineStr  = isOnline and "● 접속중" or "○ 오프라인"
                     local zoneStr    = (zone and zone ~= "") and zone or "-"
                     local noteStr    = (publicNote and publicNote ~= "") and publicNote or "-"
                     local gsStr = ""
@@ -592,7 +598,8 @@ local function HandleGuildCommand(cmd, whisperTo)
         GG_Send("!전문기술 - 전문기술 분포", whisperTo)
         GG_Send("!장비 - 내 장비점수", whisperTo)
         GG_Send("!장비 [이름] - 특정 길드원 장비점수", whisperTo)
-        GG_Send("!장비길드 - 전체 장비점수 순위", whisperTo)
+        GG_Send("!장비길드 - 길드원 장비점수 순위", whisperTo)
+        GG_Send("!장비전체 - 수집된 전원 순위", whisperTo)
         GG_Send("!길드[명령어] - 위 명령어를 길드창에 표시  예) !길드현황", whisperTo)
         GG_Send("─── 기타 ───", whisperTo)
         GG_Send("!도움 종족 - 종족별 멤버 검색 키워드", whisperTo)
@@ -602,7 +609,7 @@ local function HandleGuildCommand(cmd, whisperTo)
     elseif cmd == "help_class" then
         GG_Send("직업별 멤버목록: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드 !죽기", whisperTo)
     elseif cmd == "help_race" then
-        GG_Send("종족별 멤버목록: !오크 !언데드 !타우렌 !트롤 !혈요정 !인간 !드워프 !나엘 !노움 !드레나이", whisperTo)
+        GG_Send("종족별 멤버목록: !오크 !언데드 !타우렌 !트롤 !블엘 !인간 !드워프 !나엘 !노움 !드레나이", whisperTo)
     elseif cmd == "help_prof" then
         GG_Send("전문기술별 멤버목록: !대장 !재봉 !연금 !기공 !가세 !보세 !약초 !채광 !마부 !무두 !요리 !낚시", whisperTo)
     elseif cmd == "help_gear" then
@@ -611,8 +618,8 @@ local function HandleGuildCommand(cmd, whisperTo)
         GG_Send("!장비길드 - 길드원 장비점수 순위", whisperTo)
         GG_Send("!장비전체 - 수집된 전원 순위", whisperTo)
         GG_Send("─── 슬롯 조회 ([이름] 생략 시 본인) ───", whisperTo)
-        GG_Send("!머리 !목 !어깨 !등 !가슴 !손목 !손 !벨트 !다리 !발", whisperTo)
-        GG_Send("!손가락(반지x2) !장신구(x2) !주장비 !보조장비 !원거리장비", whisperTo)
+        GG_Send("!머리 !목 !어깨 !등 !가슴 !벨트 !다리 !발 !손목 !손", whisperTo)
+        GG_Send("!손가락(반지x2) !장신구(x2) !주장비 !보조장비 !원거리", whisperTo)
     elseif cmd == "help_daily" then
         GG_Send("일정 등록 (길드챗): !일일일던 [이름]  /  !일일영던 [이름]  /  !주간전장 [이름]", whisperTo)
         GG_Send("일정 조회: !일던  !영던  !전장  (값 없이 등록 명령어 치면 초기화)", whisperTo)
@@ -1188,10 +1195,14 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 local guildFrom = sub:match("^장비길드 (%d+)$")
                 local allFrom   = sub:match("^장비전체 (%d+)$")
                 local gearT     = sub:match("^장비 (.+)$")
+                local classGear = sub:match("^장비(.+)$")
+                local classFile = classGear and CLASS_KEYWORDS["!" .. classGear]
                 if guildFrom and MyGreeting_PrintGearRank then
                     MyGreeting_PrintGearRank(wt, true, tonumber(guildFrom))
                 elseif allFrom and MyGreeting_PrintGearRank then
                     MyGreeting_PrintGearRank(wt, false, tonumber(allFrom))
+                elseif classFile and MyGreeting_PrintGearRank then
+                    MyGreeting_PrintGearRank(wt, false, nil, classFile, classGear)
                 elseif gearT then
                     if MyGreeting_GetGearScore then MyGreeting_GetGearScore(strtrim(gearT), wt) end
                 else
@@ -1310,8 +1321,8 @@ SlashCmdList["MYGREETING"] = function(msg)
         GG_Send("!장비 [이름] - 특정 길드원 장비점수", L)
         GG_Send("!장비길드 - 길드원 장비점수 순위", L)
         GG_Send("!장비전체 - 수집된 전원 순위", L)
-        GG_Send("!머리/목/어깨/등/가슴/손목/손/벨트/다리/발 [이름]", L)
-        GG_Send("!손가락/장신구/주장비/보조장비/원거리장비 [이름]", L)
+        GG_Send("!머리/목/어깨/등/가슴/벨트/다리/발/손목/손 [이름]", L)
+        GG_Send("!손가락/장신구/주장비/보조장비/원거리 [이름]", L)
         GG_Send("!도움 장비 - 슬롯 명령어 전체 목록", L)
         GG_Send("!도움 - 길드챗 도움말", L)
         GG_Send("─── 기타 ───", L)
@@ -1377,6 +1388,16 @@ SlashCmdList["MYGREETING"] = function(msg)
             MyGreeting_GetGearScore(target, "LOCAL")
         end
 
+    elseif (function()
+        local s = msg:match("^장비(.+)$")
+        return s and CLASS_KEYWORDS and CLASS_KEYWORDS["!" .. s]
+    end)() then
+        local className = msg:match("^장비(.+)$")
+        local classFile = CLASS_KEYWORDS["!" .. className]
+        if MyGreeting_PrintGearRank then
+            MyGreeting_PrintGearRank("LOCAL", false, nil, classFile, className)
+        end
+
     elseif lower == "db" then
         if MyGreeting_PrintAltDB then MyGreeting_PrintAltDB() end
 
@@ -1413,15 +1434,25 @@ SlashCmdList["MYGREETING"] = function(msg)
         elseif PROF_CMD_KEYWORDS["!" .. msg] then
             HandleGuildProfList(PROF_CMD_KEYWORDS["!" .. msg], "LOCAL")
         else
-            local infoT = msg:match("^정보%s+(.+)$")
-            if infoT then
-                HandleGuildCharInfo(infoT, "LOCAL")
+            local slotCmd, slotTarget = msg:match("^(%S+)%s+(.+)$")
+            if not slotCmd then slotCmd = msg end
+            local slotIds = GEAR_SLOT_CMDS[slotCmd]
+            if slotIds then
+                local myName = UnitName("player")
+                myName = myName and (myName:match("^([^%-]+)") or myName)
+                local targetName = (slotTarget and strtrim(slotTarget) ~= "") and strtrim(slotTarget) or myName
+                if MyGreeting_GetGearSlot then MyGreeting_GetGearSlot(targetName, slotIds, "LOCAL") end
             else
-                local rankT = msg:match("^등급%s+(.+)$")
-                if rankT then
-                    HandleGuildCommand("rank:" .. strtrim(rankT), "LOCAL")
+                local infoT = msg:match("^정보%s+(.+)$")
+                if infoT then
+                    HandleGuildCharInfo(infoT, "LOCAL")
                 else
-                    GG_Send("알 수 없는 명령어. /mg help", "LOCAL")
+                    local rankT = msg:match("^등급%s+(.+)$")
+                    if rankT then
+                        HandleGuildCommand("rank:" .. strtrim(rankT), "LOCAL")
+                    else
+                        GG_Send("알 수 없는 명령어. /mg help", "LOCAL")
+                    end
                 end
             end
         end

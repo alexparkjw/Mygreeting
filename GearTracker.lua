@@ -33,6 +33,17 @@ local cooldowns    = {}
 local lastTryTime  = {}  -- 중복 호출 방지용 (1초 이내 동일 유닛 재호출 무시)
 local scanPending  = false
 
+local function FindUnit(guid)
+    if UnitGUID("target") == guid then return "target" end
+    local prefix = IsInRaid() and "raid" or "party"
+    local max    = IsInRaid() and 40 or 4
+    for i = 1, max do
+        if UnitGUID(prefix .. i) == guid then return prefix .. i end
+    end
+    return nil
+end
+
+
 local function IsGuildMember(name)
     local total = GetNumGuildMembers()
     for i = 1, total do
@@ -246,7 +257,8 @@ local function TryInspect(unit)
         local specs = GetSpecInfo(false, unit)
         -- 아이템 목록이 비어있으면 inspect도 진행해서 목록 채움
         if items and #items > 0 then
-            MyGreetingDB.gearData[name] = { ilvl = ilvl, gs = gs, date = date("%m/%d %H:%M"), specs = specs, items = items }
+            local classDisplay = UnitClass(unit)
+            MyGreetingDB.gearData[name] = { ilvl = ilvl, gs = gs, date = date("%m/%d %H:%M"), specs = specs, items = items, class = classDisplay }
             if gearDebugMode then
                 local saved = MyGreetingDB.gearData[name]
                 if unit == "target" then
@@ -305,7 +317,8 @@ local function CollectSelf(retry)
     end
     if not MyGreetingDB then return end
     if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
-    MyGreetingDB.gearData[name] = { ilvl = ilvl, gs = gs, date = date("%m/%d %H:%M"), specs = specs, items = items }
+    local classDisplay = UnitClass("player")
+    MyGreetingDB.gearData[name] = { ilvl = ilvl, gs = gs, date = date("%m/%d %H:%M"), specs = specs, items = items, class = classDisplay }
     if gearDebugMode then
         DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r 내 장비 수집완료: " .. ilvl)
     end
@@ -352,28 +365,19 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
         local fromTarget = (inspecting.unit == "target")
         inspecting = nil
 
-        -- GUID로 현재 접근 가능한 유닛 토큰 찾기
-        local function FindUnit(guid)
-            if UnitGUID("target") == guid then return "target" end
-            local prefix = IsInRaid() and "raid" or "party"
-            local max    = IsInRaid() and 40 or 4
-            for i = 1, max do
-                if UnitGUID(prefix .. i) == guid then return prefix .. i end
-            end
-            return nil
-        end
-
         local function TrySave(retry)
             local unit = FindUnit(savedGuid)
             local ilvl, gs, items, specs
+            local classDisplay
             if unit then
                 ilvl, gs, items = CollectGear(unit)
                 specs = GetSpecInfo(true, unit)
+                classDisplay = UnitClass(unit)
             end
             if ilvl then
                 if not MyGreetingDB then return end
                 if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
-                MyGreetingDB.gearData[name] = { ilvl = ilvl, gs = gs, date = date("%m/%d %H:%M"), specs = specs, items = items }
+                MyGreetingDB.gearData[name] = { ilvl = ilvl, gs = gs, date = date("%m/%d %H:%M"), specs = specs, items = items, class = classDisplay }
                 if gearDebugMode then
                     if fromTarget then
                         local saved = MyGreetingDB.gearData[name]
@@ -411,6 +415,27 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "PLAYER_LOGIN" then
         C_Timer.After(3, CollectSelf)
+        C_Timer.After(5, function()
+            local data = MyGreetingDB and MyGreetingDB.gearData
+            if not data then return end
+            C_GuildInfo.GuildRoster()
+            C_Timer.After(0.5, function()
+                local total = GetNumGuildMembers()
+                local guildClassMap = {}
+                for i = 1, total do
+                    local n, _, _, _, classDisplay = GetGuildRosterInfo(i)
+                    if n then
+                        n = n:match("^([^%-]+)") or n
+                        guildClassMap[n] = classDisplay
+                    end
+                end
+                for n, info in pairs(data) do
+                    if not info.class and guildClassMap[n] then
+                        info.class = guildClassMap[n]
+                    end
+                end
+            end)
+        end)
 
     elseif event == "PLAYER_EQUIPMENT_CHANGED" then
         C_Timer.After(1, CollectSelf)
@@ -421,6 +446,9 @@ end)
 -- 출력 헬퍼
 -- ============================================================
 local function GearSend(msg, whisperTo)
+    if whisperTo ~= "LOCAL" and UnitIsAFK("player") then
+        msg = "<자리비움> " .. msg
+    end
     if whisperTo == "LOCAL" then
         DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r " .. msg)
     elseif whisperTo then
@@ -436,7 +464,9 @@ end
 -- ============================================================
 -- guildOnly=true면 길드원만, false/nil이면 수집된 전체
 -- startFrom: 시작 순위 (기본 1), 10개씩 표시
-function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom)
+-- classFilter: 한글 직업명 (예: "전사") — 해당 직업만
+-- classLabel: 출력용 직업명 (보통 classFilter와 동일)
+function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom, classFilter, classLabel)
     local data = MyGreetingDB and MyGreetingDB.gearData
     if not data or not next(data) then
         GearSend("수집된 데이터 없음 — 길드원 타겟 또는 파티 맺으면 자동 수집됩니다", whisperTo)
@@ -445,7 +475,9 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom)
 
     local list = {}
     for name, info in pairs(data) do
-        if not guildOnly or IsGuildMember(name) then
+        local passGuild = not guildOnly or IsGuildMember(name)
+        local passClass = not classFilter or info.class == classFilter
+        if passGuild and passClass then
             local sortKey = info.gs or info.ilvl or info.score or 0
             list[#list + 1] = { name = name, info = info, sortKey = sortKey }
         end
@@ -462,7 +494,14 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom)
         return
     end
 
-    local title = guildOnly and "길드원 장비점수 순위" or "전체 장비점수 순위"
+    local title
+    if classFilter then
+        title = (classLabel or classFilter) .. " 장비점수 순위"
+    elseif guildOnly then
+        title = "길드원 장비점수 순위"
+    else
+        title = "전체 장비점수 순위"
+    end
     local suffix = " (" .. from .. "-" .. to .. "/" .. total .. "명)"
     local wt = whisperTo
     if wt == "LOCAL" then
