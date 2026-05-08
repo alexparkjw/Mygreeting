@@ -321,14 +321,14 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
                 if gearDebugMode then
                     DEFAULT_CHAT_FRAME:AddMessage("|cffFFAA00[장비디버그]|r " .. name .. " 대기중 (재시도 " .. retry .. ")")
                 end
-                C_Timer.After(0.5, function() TrySave(retry - 1) end)
+                C_Timer.After(1, function() TrySave(retry - 1) end)
             else
                 if gearDebugMode then
                     DEFAULT_CHAT_FRAME:AddMessage("|cffFF4040[장비디버그]|r " .. name .. " 실패 (캐시 없음)")
                 end
             end
         end
-        TrySave(3)
+        TrySave(5)
 
     elseif event == "PLAYER_TARGET_CHANGED" then
         TryInspect("target")
