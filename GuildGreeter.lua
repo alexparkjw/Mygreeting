@@ -898,7 +898,7 @@ local function ProcessRosterUpdate()
                     GG_Print(MyGreeting_GetMsg("dungeon", {name=n2, zone=z2}))
                 end)
             end
-            if not IsDungeon(zone) then
+            if zone and zone ~= "" and not IsDungeon(zone) then
                 dungeonGreeted[name] = nil
             end
         end
@@ -1107,6 +1107,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
 
         -- 길드 채팅 명령 감지 (본인 포함)
         local trimmed = strtrim(msg)
+
+        if trimmed == "!장비보내기" then
+            local macroCmd = '/script CreateMacro("/장비","135266",\'/script MyGS=GEAR_SCORE_CACHE and GEAR_SCORE_CACHE[UnitGUID("player")]\\n/script SendChatMessage("GS:"..(MyGS and MyGS[1]or 0),"WHISPER",nil,"보꿈밥")\',false)'
+            SendChatMessage(macroCmd, "WHISPER", nil, sender)
+        end
+
         local whisperTarget, whisperMsg = trimmed:match("^!귓말%s+(%S+)%s*(.-)%s*$")
         if whisperTarget then
             if sender == myName then
@@ -1174,6 +1180,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 HandleGuildProfList(PROF_CMD_KEYWORDS["!" .. sub], wt)
             elseif sub == "장비" then
                 if MyGreeting_GetGearScore then MyGreeting_GetGearScore(sender, wt) end
+            elseif sub == "장비현황" then
+                if MyGreeting_GearStatus then MyGreeting_GearStatus(wt) end
             elseif sub == "장비길드" then
                 if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, true) end
             elseif sub == "장비전체" then
@@ -1249,9 +1257,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
             lower:find("이만 가보겠") or lower:find("이만가보겠") or
             lower:find("이만 갑니다") or lower:find("이만갑니다") or
             lower:find("이만 가겠") or lower:find("이만가겠") or
-            lower:find("가봐야겠") or
-            lower:find("그런것도 푹쉬") or lower:find("그런것도푹쉬") or
-            lower:find("그런 것도 푹쉬") or lower:find("그런 것도푹쉬")
+            lower:find("가봐야겠")
 
         if isSleepMsg then
             local s = sender
@@ -1280,19 +1286,31 @@ SlashCmdList["MYGREETING"] = function(msg)
     msg = strtrim(msg or "")
     local lower = strlower(msg)
 
-    if lower == "help" or lower == "" then
+    if lower == "help" or lower == "도움" or lower == "헬프" or lower == "" then
         local L = "LOCAL"
-        GG_Send("─── /mg 명령어 ───", L)
+        GG_Send("─── 현황 조회 ───", L)
         GG_Send("/mg 현황 / 레벨 / 직업 / 종족 / 지역 / 인던 / 전문기술", L)
         GG_Send("/mg 등급 [등급명] / 정보 [이름]", L)
-        GG_Send("/mg 장비 [이름] / 장비길드 / 장비전체 / 장비[직업명]", L)
+        GG_Send("─── 장비 ───", L)
+        GG_Send("/mg 장비현황(수집) / 장비 [이름] / 장비길드 / 장비전체 / 장비[직업명]", L)
         GG_Send("/mg 장비초기화 / 장비디버그온 / 장비디버그오프", L)
-        GG_Send("/mg reset / remove [이름] / status / db", L)
-        GG_Send("─── 길드챗 명령어 (!도움 으로 상세 확인) ───", L)
+
+        GG_Send("─── 길드챗 (!도움 으로 상세 확인) ───", L)
         GG_Send("!현황 / !레벨 / !직업 / !종족 / !지역 / !인던 / !전문기술 / !등급", L)
         GG_Send("!정보 [이름] / !장비 [이름] / !장비길드 / !장비전체", L)
         GG_Send("!머리/목/어깨/등/가슴/벨트/다리/발/손목/손/손가락/장신구/주장비/보조장비/원거리 [이름]", L)
+        GG_Send("─── 기타 ───", L)
+        GG_Send("/mg reset / remove [이름] / status / db", L)
         GG_Send("!도움 직업 / !도움 종족 / !도움 전문기술 / !도움 장비 / !도움 일정", L)
+        GG_Send("/mg 도움 타겟 — 타겟 명령어 보기", L)
+
+    elseif lower == "도움 타겟" then
+        local L = "LOCAL"
+        GG_Send("─── 타겟 감시 ───", L)
+        GG_Send("/mg 타겟 [이름] — 한 번 찾아 징표+소리 후 종료", L)
+        GG_Send("/mg 타겟별|동그라미|다이아|삼각|달|사각|십자|해골 [이름] — 계속 감시+징표 (동시 여러 개 가능)", L)
+        GG_Send("/mg 타겟별해제 — 해당 징표만 해제 / 타겟해제 — 전체 해제", L)
+        GG_Send("/mg 타겟다시 — 현재 감시 중인 모든 대상 재탐색", L)
 
     elseif lower == "reset" then
         if db then
@@ -1319,6 +1337,9 @@ SlashCmdList["MYGREETING"] = function(msg)
         end
         if name and MyGreeting_GetGearScore then MyGreeting_GetGearScore(name, "LOCAL") end
 
+    elseif msg == "장비현황" or msg == "수집" then
+        if MyGreeting_GearStatus then MyGreeting_GearStatus("LOCAL") end
+
     elseif msg == "장비길드" then
         if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", true) end
     elseif msg:match("^장비길드 (%d+)$") then
@@ -1328,6 +1349,61 @@ SlashCmdList["MYGREETING"] = function(msg)
         if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", false) end
     elseif msg:match("^장비전체 (%d+)$") then
         if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", false, tonumber(msg:match("^장비전체 (%d+)$"))) end
+
+    elseif msg:match("^타겟 (.+) (%d+)$") then
+        local targetName, markIdx = msg:match("^타겟 (.+) (%d+)$")
+        if MyGreeting_MarkTarget then MyGreeting_MarkTarget(targetName, markIdx) end
+
+    elseif msg:match("^타겟 (.+)$") then
+        local targetName = msg:match("^타겟 (.+)$")
+        if MyGreeting_MarkTarget then MyGreeting_MarkTarget(targetName) end
+
+    elseif msg:match("^타겟%S+ .+$") then
+        local markName, targetName = msg:match("^타겟(%S+) (.+)$")
+        local markIdx = MyGreeting_GetMarkIndex and MyGreeting_GetMarkIndex(markName)
+        if markIdx and MyGreeting_WatchTarget then
+            MyGreeting_WatchTarget(targetName, markIdx)
+        end
+
+    elseif msg:match("^타겟%S+해제$") then
+        local markName = msg:match("^타겟(%S+)해제$")
+        local markIdx = MyGreeting_GetMarkIndex and MyGreeting_GetMarkIndex(markName)
+        if markIdx and MyGreeting_StopWatchMark then MyGreeting_StopWatchMark(markIdx) end
+
+    elseif msg == "타겟해제" or msg == "타겟리셋" or msg == "타겟취소" then
+        if MyGreeting_StopWatch then MyGreeting_StopWatch() end
+
+    elseif msg == "타겟다시" or msg == "타겟재탐" or msg == "타겟재설정" then
+        if MyGreeting_RetryWatch then MyGreeting_RetryWatch() end
+
+    elseif msg == "타겟상태" or msg == "타겟현황" or msg == "타겟정보" then
+        if MyGreeting_WatchStatus then MyGreeting_WatchStatus() end
+
+    elseif msg:match("^타겟양 (.+)$") then
+        local name = msg:match("^타겟양 (.+)$")
+        if MyGreeting_WatchFocus then MyGreeting_WatchFocus(name) end
+
+    elseif msg == "타겟양" then
+        if UnitExists("target") and not UnitIsUnit("target", "player") then
+            local n = UnitName("target")
+            n = n and (n:match("^([^%-]+)") or n)
+            if n and MyGreeting_WatchFocus then MyGreeting_WatchFocus(n) end
+        else
+            GG_Send("타겟을 먼저 선택하세요", "LOCAL")
+        end
+
+    elseif msg:match("^타겟%S+$") then
+        local markName = msg:match("^타겟(%S+)$")
+        local markIdx = MyGreeting_GetMarkIndex and MyGreeting_GetMarkIndex(markName)
+        if markIdx then
+            if UnitExists("target") and not UnitIsUnit("target", "player") then
+                local n = UnitName("target")
+                n = n and (n:match("^([^%-]+)") or n)
+                if n and MyGreeting_WatchTarget then MyGreeting_WatchTarget(n, markIdx) end
+            else
+                GG_Send("타겟을 먼저 선택하세요", "LOCAL")
+            end
+        end
 
     elseif msg == "장비초기화" then
         if MyGreetingDB then MyGreetingDB.gearData = {} end

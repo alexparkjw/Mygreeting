@@ -1,5 +1,5 @@
 ## Interface: 20505
-## Title: myGreeting - 길드/파티/버프 커스텀 인사
+## Title: MyGreeting - 길드/파티/버프 커스텀 인사
 ## Notes: 길드원 접속/레벨업, 파티 자동 인사, 버프/힐 감사, 본캐/부캐 DB
 ## Author: 직접입력
 ## Version: 1.0.0
@@ -10,3 +10,4 @@ GuildGreeter.lua
 PartyGreeter.lua
 BuffGreeter.lua
 GearTracker.lua
+MyTarget.lua

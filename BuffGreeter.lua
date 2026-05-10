@@ -4,7 +4,7 @@
 -- ============================================================
 
 local BUFF_COOLDOWN = 10
-local DEBUG_MODE    = true
+local DEBUG_MODE    = false
 local GREET_DELAY   = 1
 
 -- ============================================================
@@ -87,6 +87,7 @@ end
 local preTradeBag       = {}
 local preLootBag        = {}
 local recentTableMage    = nil  -- {name, time}
+local tablePreBag        = nil  -- 식탁 시전 시점 가방 스냅샷
 local recentSoulwellLock = nil  -- {name, time}
 local rezCaster         = nil
 local wasDead           = false
@@ -230,6 +231,7 @@ buffFrame:RegisterEvent("PLAYER_UNGHOST")
 buffFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 buffFrame:RegisterEvent("LOOT_OPENED")
 buffFrame:RegisterEvent("LOOT_CLOSED")
+buffFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 
 buffFrame:SetScript("OnEvent", function(self, event, ...)
 
@@ -253,6 +255,7 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
             local caster = sourceName:match("^([^%-]+)") or sourceName
             if CONJURE_TABLE_IDS[spellId] then
                 recentTableMage = { name = caster, time = GetTime() }
+                tablePreBag = SnapshotBag()
             elseif SOULWELL_IDS[spellId] then
                 recentSoulwellLock = { name = caster, time = GetTime() }
             end
@@ -348,6 +351,8 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
                 else
                     SendChatMessage(m, "PARTY")
                 end
+                recentTableMage = nil
+                tablePreBag = nil
             end
             if gotHealthstone and recentSoulwellLock and (now - recentSoulwellLock.time) < 300 then
                 local m = "생명석 감사합니다"
@@ -359,6 +364,30 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
             end
             preLootBag = {}
         end)
+
+    -- ── 식탁 음식 감지 (LOOT 이벤트 안 뜰 때 대비) ───────────
+    elseif event == "BAG_UPDATE_DELAYED" then
+        if not recentTableMage or not tablePreBag then return end
+        if (GetTime() - recentTableMage.time) > 300 then
+            recentTableMage = nil; tablePreBag = nil; return
+        end
+        local afterBag = SnapshotBag()
+        local gotFood = false
+        for itemID, count in pairs(afterBag) do
+            if count > (tablePreBag[itemID] or 0) and TRADE_FRIENDLY_NAME[itemID] == "물빵" then
+                gotFood = true; break
+            end
+        end
+        if gotFood then
+            local mage = recentTableMage
+            recentTableMage = nil; tablePreBag = nil
+            local m = "식탁 감사합니다"
+            if IsInParty() then
+                SendChatMessage(m, "PARTY")
+            else
+                SendChatMessage(m, "WHISPER", nil, mage.name)
+            end
+        end
 
     -- ── 거래 전 스냅샷 ────────────────────────────────────────
     elseif event == "TRADE_SHOW" then

@@ -800,3 +800,92 @@ function MyGreeting_GetGearSlot(name, slotIds, whisperTo)
         GearSend(name .. " 해당 슬롯 장비 없음", whisperTo)
     end
 end
+
+-- ============================================================
+-- 커뮤니티 채널 명령어 핸들러
+-- ============================================================
+local COMM_CLUB_ID  = 57029383
+local COMM_STREAM_ID = 1
+local COMM_CH_NAME  = "Community:" .. COMM_CLUB_ID .. ":" .. COMM_STREAM_ID
+
+local function CommSend(msg)
+    local chNum = GetChannelName(COMM_CH_NAME)
+    if not chNum or chNum == 0 then return end
+    SendChatMessage(msg, "CHANNEL", nil, chNum)
+end
+
+local function CommGearLine(name)
+    local data = MyGreetingDB and MyGreetingDB.gearData
+    local info = data and data[name]
+    local best = info and GetBestSpec(info)
+    if not best then return name .. " 데이터 없음" end
+    return name .. " (" .. (best.name or "?") .. ")  " .. ScoreStr(best) .. "  (" .. (best.date or "?") .. ")"
+end
+
+local function CommDispatch(text, sender)
+    text = strtrim(text or "")
+    if text == "안녕하세요" then
+        CommSend("안녕합니다")
+        return
+    end
+    if text == "!장비" then
+        if sender and #sender > 0 then
+            CommSend(CommGearLine(sender))
+        else
+            CommSend("사용법: !장비 캐릭명")
+        end
+    elseif text:find("!장비 ", 1, true) == 1 then
+        local name = strtrim(text:sub(#"!장비 " + 1))
+        if #name > 0 then CommSend(CommGearLine(name)) end
+    elseif text:find("!장비순위 ", 1, true) == 1 then
+        local prefix = "!장비순위 "
+        local from = tonumber(strtrim(text:sub(#prefix + 1)))
+        if not from then return end
+        local data = MyGreetingDB and MyGreetingDB.gearData
+        if not data or not next(data) then CommSend("수집된 데이터 없음"); return end
+        local list = {}
+        for name, info in pairs(data) do
+            if IsGuildMember(name) then
+                for _, key in ipairs({"spec1", "spec2"}) do
+                    local spec = info[key]
+                    if spec then
+                        list[#list+1] = { label = name.."(".. (spec.name or "?") ..")", spec = spec, sortKey = spec.gs or spec.ilvl or 0 }
+                    end
+                end
+            end
+        end
+        table.sort(list, function(a, b) return a.sortKey > b.sortKey end)
+        local total = #list
+        if total == 0 then CommSend("길드원 데이터 없음"); return end
+        if from > total then CommSend("해당 순위 없음 (전체 "..total.."명)"); return end
+        local to = math.min(total, from + 9)
+        CommSend("── 길드원 장비순위 "..from.."-"..to.." / "..total.."명 ──")
+        for i = from, to do
+            local e = list[i]
+            C_Timer.After((i - from + 1) * 0.5, function()
+                CommSend(i..". "..e.label.."  "..ScoreStr(e.spec))
+            end)
+        end
+    end
+end
+
+local lastCommDispatch = 0
+
+local commFrame = CreateFrame("Frame")
+commFrame:RegisterEvent("CLUB_MESSAGE_ADDED")
+commFrame:SetScript("OnEvent", function(self, event, clubId, streamId, messageId)
+    if tostring(clubId) ~= tostring(COMM_CLUB_ID) then return end
+    if tostring(streamId) ~= tostring(COMM_STREAM_ID) then return end
+    local now = GetTime()
+    if now - lastCommDispatch < 0.5 then return end
+    lastCommDispatch = now
+    C_Timer.After(0.1, function()
+        local msgs = C_Club.GetMessagesInRange(clubId, streamId, messageId, messageId)
+        if not msgs or not msgs[1] then return end
+        local text = strtrim(msgs[1].content or "")
+        if text == "" then return end
+        local author = msgs[1].author
+        local sender = author and (author.name or author.characterName) or ""
+        CommDispatch(text, sender)
+    end)
+end)
