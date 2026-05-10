@@ -33,6 +33,13 @@ local cooldowns    = {}
 local lastTryTime  = {}  -- 중복 호출 방지용 (1초 이내 동일 유닛 재호출 무시)
 local scanPending  = false
 
+local inspectQueue = {}   -- 순서대로 처리할 guid 목록
+local queuedGuids  = {}   -- 중복 방지용 set (guid -> true)
+local nameplateMap = {}   -- guid -> 현재 nameplate 유닛 토큰
+
+local TryInspect  -- 전방 선언 (ProcessInspectQueue에서 참조)
+local GearSend    -- 전방 선언 (MyGreeting_GearStatus에서 참조)
+
 local function FindUnit(guid)
     if UnitGUID("target") == guid then return "target" end
     local prefix = IsInRaid() and "raid" or "party"
@@ -201,9 +208,59 @@ local function SpecToString(specs)
     return ok and result or ""
 end
 
+-- 특성 슬롯(1 or 2) 기준으로 저장 — 기존 데이터는 해당 슬롯만 덮어씀
+local function SaveSpecData(name, ilvl, gs, items, specs, isInspect, classDisplay)
+    if not MyGreetingDB then return end
+    if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
+    local entry = MyGreetingDB.gearData[name] or {}
+    entry.class = classDisplay or entry.class
+    local activeGroup = (GetActiveTalentGroup and GetActiveTalentGroup(isInspect)) or 1
+    local specKey = "spec" .. activeGroup
+    local specName = (specs and specs[activeGroup] and specs[activeGroup].name) or "?"
+    entry[specKey] = { name=specName, ilvl=ilvl, gs=gs, items=items, date=date("%m/%d %H:%M") }
+    MyGreetingDB.gearData[name] = entry
+    return specKey, specName
+end
+
+-- 두 특성 중 점수 높은 것 반환, 구버전 데이터도 처리
+local function GetBestSpec(info)
+    local best = nil
+    for _, key in ipairs({"spec1", "spec2"}) do
+        local spec = info[key]
+        if spec then
+            local score = spec.gs or spec.ilvl or 0
+            if not best or score > (best.gs or best.ilvl or 0) then
+                best = spec
+            end
+        end
+    end
+    return best or (info.ilvl and info or nil)
+end
+
 local gearDebugMode = false
 
-local function TryInspect(unit)
+local function ProcessInspectQueue()
+    if inspecting then return end
+    while #inspectQueue > 0 do
+        local guid = table.remove(inspectQueue, 1)
+        queuedGuids[guid] = nil
+        local unit = nameplateMap[guid] or FindUnit(guid)
+        if unit and UnitExists(unit) and UnitGUID(unit) == guid then
+            if gearDebugMode then
+                local uname = UnitName(unit) or "?"
+                uname = uname:match("^([^%-]+)") or uname
+                local collected = MyGreetingDB and MyGreetingDB.gearData and (function() local n=0; for _ in pairs(MyGreetingDB.gearData) do n=n+1 end; return n end)() or 0
+                DEFAULT_CHAT_FRAME:AddMessage(
+                    "|cff40FF40[장비디버그]|r 큐처리: " .. uname ..
+                    "  남은 " .. #inspectQueue .. "명 / 수집완료 " .. collected .. "명")
+            end
+            TryInspect(unit)
+            if inspecting then return end
+        end
+    end
+end
+
+TryInspect = function(unit)
     if not UnitExists(unit) or not UnitIsPlayer(unit) then return end
     if UnitIsUnit(unit, "player") then return end
 
@@ -215,6 +272,8 @@ local function TryInspect(unit)
     local uf = UnitFactionGroup(unit)
     if pf and uf and pf ~= uf then return end
 
+    if (UnitLevel(unit) or 0) < 70 then return end
+
     local now = GetTime()
     if lastTryTime[name] and (now - lastTryTime[name]) < 1 then return end
     lastTryTime[name] = now
@@ -225,7 +284,8 @@ local function TryInspect(unit)
         local now        = GetTime()
         local coolLeft   = cooldowns[name] and math.floor(INSPECT_COOLDOWN_SEC - (now - cooldowns[name])) or 0
         local cached     = MyGreetingDB and MyGreetingDB.gearData and MyGreetingDB.gearData[name]
-        local cacheStr   = cached and (ScoreStr(cached) .. " (" .. cached.date .. ")") or "없음"
+        local cachedBest = cached and GetBestSpec(cached)
+        local cacheStr   = cachedBest and (ScoreStr(cachedBest) .. " (" .. (cachedBest.date or "?") .. ")") or "없음"
 
         local skip = nil
         if isBusy then
@@ -258,18 +318,9 @@ local function TryInspect(unit)
         -- 아이템 목록이 비어있으면 inspect도 진행해서 목록 채움
         if items and #items > 0 then
             local classDisplay = UnitClass(unit)
-            MyGreetingDB.gearData[name] = { ilvl = ilvl, gs = gs, date = date("%m/%d %H:%M"), specs = specs, items = items, class = classDisplay }
+            local _, specName = SaveSpecData(name, ilvl, gs, items, specs, false, classDisplay)
             if gearDebugMode then
-                local saved = MyGreetingDB.gearData[name]
-                if unit == "target" then
-                    DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r DB저장: " .. name .. "  " .. ScoreStr(saved) .. SpecToString(specs))
-                    for _, item in ipairs(saved.items or {}) do
-                        if not SKIP_SLOTS[item.slot] then
-                            DEFAULT_CHAT_FRAME:AddMessage(ItemDisplay(item))
-                        end
-                    end
-                end
-                DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[장비디버그]|r " .. name .. " 완료: " .. ilvl .. SpecToString(specs))
+                DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[장비디버그]|r " .. name .. " 완료: " .. ilvl .. " [" .. specName .. "]")
             end
             return
         end
@@ -281,9 +332,16 @@ local function TryInspect(unit)
 
     if cooldowns[name] and (now - cooldowns[name]) < INSPECT_COOLDOWN_SEC then return end
 
-    inspecting = { unit = unit, name = name, guid = UnitGUID(unit) }
+    local savedGuid = UnitGUID(unit)
+    inspecting = { unit = unit, name = name, guid = savedGuid }
     cooldowns[name] = now
     NotifyInspect(unit)
+    C_Timer.After(5, function()
+        if inspecting and inspecting.guid == savedGuid then
+            inspecting = nil
+            ProcessInspectQueue()
+        end
+    end)
 end
 
 local function ScanGroup()
@@ -318,9 +376,74 @@ local function CollectSelf(retry)
     if not MyGreetingDB then return end
     if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
     local classDisplay = UnitClass("player")
-    MyGreetingDB.gearData[name] = { ilvl = ilvl, gs = gs, date = date("%m/%d %H:%M"), specs = specs, items = items, class = classDisplay }
+    local _, specName = SaveSpecData(name, ilvl, gs, items, specs, false, classDisplay)
     if gearDebugMode then
-        DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r 내 장비 수집완료: " .. ilvl)
+        DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r 내 장비 수집완료: " .. ilvl .. " [" .. specName .. "]")
+    end
+end
+
+function MyGreeting_GearStatus(whisperTo)
+    local data = MyGreetingDB and MyGreetingDB.gearData
+    local total = 0
+    local guildCount = 0
+    local totalIlvl = 0
+    local maxIlvl, maxName = 0, nil
+    local classCounts = {}
+    local latest = nil
+
+    if data then
+        for name, info in pairs(data) do
+            local isGuild = IsGuildMember(name)
+            local hasSpec = false
+            for _, key in ipairs({"spec1", "spec2"}) do
+                local spec = info[key]
+                if spec then
+                    hasSpec = true
+                    total = total + 1
+                    if isGuild then guildCount = guildCount + 1 end
+                    local score = spec.gs or spec.ilvl or 0
+                    totalIlvl = totalIlvl + score
+                    if score > maxIlvl then
+                        maxIlvl = score
+                        maxName = name .. "(" .. (spec.name or "?") .. ")"
+                    end
+                    if not latest or (spec.date or "") > latest then latest = spec.date end
+                end
+            end
+            if not hasSpec and info.ilvl then  -- 구버전 폴백
+                total = total + 1
+                if isGuild then guildCount = guildCount + 1 end
+                local score = info.gs or info.ilvl or 0
+                totalIlvl = totalIlvl + score
+                if score > maxIlvl then maxIlvl = score; maxName = name end
+                if not latest or (info.date or "") > latest then latest = info.date end
+            end
+            if info.class then
+                classCounts[info.class] = (classCounts[info.class] or 0) + 1
+            end
+        end
+    end
+
+    local wt = whisperTo
+    if total == 0 then
+        GearSend("수집된 데이터 없음", wt)
+        return
+    end
+
+    local avgIlvl = math.floor(totalIlvl / total)
+    GearSend("── 장비 수집 현황 ──", wt)
+    GearSend("총 수집: " .. total .. "명  (길드원: " .. guildCount .. "명)", wt)
+    GearSend("평균 gs/ilvl: " .. avgIlvl .. "  최고: " .. (maxName or "?") .. " " .. maxIlvl, wt)
+    GearSend("대기 큐: " .. #inspectQueue .. "명", wt)
+    GearSend("마지막 수집: " .. (latest or "?"), wt)
+
+    local classParts = {}
+    for cls, cnt in pairs(classCounts) do
+        classParts[#classParts + 1] = cls .. " " .. cnt
+    end
+    if #classParts > 0 then
+        table.sort(classParts)
+        GearSend("직업별: " .. table.concat(classParts, " / "), wt)
     end
 end
 
@@ -345,6 +468,8 @@ gearFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 gearFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 gearFrame:RegisterEvent("PLAYER_LOGIN")
 gearFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+gearFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
+gearFrame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
 
 gearFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "INSPECT_READY" then
@@ -364,9 +489,10 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
         local name       = inspecting.name
         local fromTarget = (inspecting.unit == "target")
         inspecting = nil
+        ProcessInspectQueue()
 
         local function TrySave(retry)
-            local unit = FindUnit(savedGuid)
+            local unit = nameplateMap[savedGuid] or FindUnit(savedGuid)
             local ilvl, gs, items, specs
             local classDisplay
             if unit then
@@ -377,16 +503,9 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
             if ilvl then
                 if not MyGreetingDB then return end
                 if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
-                MyGreetingDB.gearData[name] = { ilvl = ilvl, gs = gs, date = date("%m/%d %H:%M"), specs = specs, items = items, class = classDisplay }
+                local _, specName = SaveSpecData(name, ilvl, gs, items, specs, true, classDisplay)
                 if gearDebugMode then
-                    if fromTarget then
-                        local saved = MyGreetingDB.gearData[name]
-                        DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[장비디버그]|r DB저장: " .. name .. "  " .. ScoreStr(saved) .. SpecToString(specs))
-                        for _, item in ipairs(saved.items or {}) do
-                            DEFAULT_CHAT_FRAME:AddMessage(ItemDisplay(item))
-                        end
-                    end
-                    DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[장비디버그]|r " .. name .. " 완료: " .. ilvl .. SpecToString(specs))
+                    DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[장비디버그]|r " .. name .. " 완료: " .. ilvl .. " [" .. specName .. "]")
                 end
             elseif retry > 0 then
                 if gearDebugMode then
@@ -439,13 +558,45 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "PLAYER_EQUIPMENT_CHANGED" then
         C_Timer.After(1, CollectSelf)
+
+    elseif event == "NAME_PLATE_UNIT_ADDED" then
+        local unit = ...
+        if not UnitIsPlayer(unit) then return end
+        if UnitIsUnit(unit, "player") then return end
+        local pf = UnitFactionGroup("player")
+        local uf = UnitFactionGroup(unit)
+        if pf and uf and pf ~= uf then return end
+        local guid = UnitGUID(unit)
+        if not guid then return end
+        nameplateMap[guid] = unit
+        if queuedGuids[guid] then return end
+        if (UnitLevel(unit) or 0) < 70 then return end
+        local name = UnitName(unit)
+        name = name and (name:match("^([^%-]+)") or name)
+        if not name then return end
+        local now = GetTime()
+        if cooldowns[name] and (now - cooldowns[name]) < INSPECT_COOLDOWN_SEC then return end
+        queuedGuids[guid] = true
+        inspectQueue[#inspectQueue + 1] = guid
+        if gearDebugMode then
+            local collected = MyGreetingDB and MyGreetingDB.gearData and (function() local n=0; for _ in pairs(MyGreetingDB.gearData) do n=n+1 end; return n end)() or 0
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cffFFFF00[장비디버그]|r 큐추가: " .. name ..
+                "  대기 " .. #inspectQueue .. "명 / 수집완료 " .. collected .. "명")
+        end
+        ProcessInspectQueue()
+
+    elseif event == "NAME_PLATE_UNIT_REMOVED" then
+        local unit = ...
+        local guid = UnitGUID(unit)
+        if guid then nameplateMap[guid] = nil end
     end
 end)
 
 -- ============================================================
 -- 출력 헬퍼
 -- ============================================================
-local function GearSend(msg, whisperTo)
+GearSend = function(msg, whisperTo)
     if whisperTo ~= "LOCAL" and UnitIsAFK("player") then
         msg = "<자리비움> " .. msg
     end
@@ -478,8 +629,18 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom, classFilter, 
         local passGuild = not guildOnly or IsGuildMember(name)
         local passClass = not classFilter or info.class == classFilter
         if passGuild and passClass then
-            local sortKey = info.gs or info.ilvl or info.score or 0
-            list[#list + 1] = { name = name, info = info, sortKey = sortKey }
+            local added = false
+            for _, key in ipairs({"spec1", "spec2"}) do
+                local spec = info[key]
+                if spec then
+                    local sortKey = spec.gs or spec.ilvl or 0
+                    list[#list + 1] = { name = name .. "(" .. (spec.name or "?") .. ")", info = spec, sortKey = sortKey }
+                    added = true
+                end
+            end
+            if not added and info.ilvl then  -- 구버전 데이터 폴백
+                list[#list + 1] = { name = name, info = info, sortKey = info.gs or info.ilvl or 0 }
+            end
         end
     end
     table.sort(list, function(a, b) return a.sortKey > b.sortKey end)
@@ -508,7 +669,7 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom, classFilter, 
         GearSend(title .. suffix .. ":", wt)
         for i = from, to do
             local e = list[i]
-            GearSend(i .. ". " .. e.name .. "  " .. ScoreStr(e.info) .. SpecToString(e.info.specs) .. "  (" .. (e.info.date or "?") .. ")", wt)
+            GearSend(i .. ". " .. e.name .. "  " .. ScoreStr(e.info) .. "  (" .. (e.info.date or "?") .. ")", wt)
         end
     else
         local interval = (wt ~= nil) and 0.4 or 1.5
@@ -524,35 +685,58 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom, classFilter, 
     end
 end
 
+local SLOT_GROUPS = {
+    { slots = {11, 12, 13, 14} },  -- 반지1, 반지2, 장신구1, 장신구2
+    { slots = {16, 17, 18} },      -- 주장비, 보조장비, 원거리
+}
+local GROUPED_SLOTS = { [11]=true, [12]=true, [13]=true, [14]=true, [16]=true, [17]=true, [18]=true }
+
 local function PrintItems(items, whisperTo)
     if not items or #items == 0 then return end
 
-    local filtered = {}
+    local bySlot = {}
     for _, item in ipairs(items) do
         if not SKIP_SLOTS[item.slot] then
-            filtered[#filtered + 1] = item
+            bySlot[item.slot] = item
         end
     end
-    if #filtered == 0 then return end
 
-    if whisperTo == "LOCAL" then
-        for _, item in ipairs(filtered) do
-            GearSend(ItemDisplay(item), whisperTo)
-        end
-    else
-        -- 3개씩 묶어서 한 메시지로 전송
-        local msgIdx = 0
-        local i = 1
-        while i <= #filtered do
-            local parts = {}
-            for j = i, math.min(i + 2, #filtered) do
-                parts[#parts + 1] = ItemDisplay(filtered[j])
-            end
-            local line = table.concat(parts, " / ")
+    local msgIdx = 0
+    local function send(line)
+        if whisperTo == "LOCAL" then
+            GearSend(line, whisperTo)
+        else
             msgIdx = msgIdx + 1
             C_Timer.After(msgIdx * 0.8, function() GearSend(line, whisperTo) end)
-            i = i + 3
         end
+    end
+
+    -- 그룹 슬롯 묶어서 전송
+    for _, group in ipairs(SLOT_GROUPS) do
+        local parts = {}
+        for _, slot in ipairs(group.slots) do
+            if bySlot[slot] then
+                parts[#parts + 1] = ItemDisplay(bySlot[slot])
+            end
+        end
+        if #parts > 0 then send(table.concat(parts, " / ")) end
+    end
+
+    -- 나머지 슬롯 3개씩 묶어서 전송
+    local rest = {}
+    for _, item in ipairs(items) do
+        if not SKIP_SLOTS[item.slot] and not GROUPED_SLOTS[item.slot] then
+            rest[#rest + 1] = item
+        end
+    end
+    local i = 1
+    while i <= #rest do
+        local parts = {}
+        for j = i, math.min(i + 2, #rest) do
+            parts[#parts + 1] = ItemDisplay(rest[j])
+        end
+        send(table.concat(parts, " / "))
+        i = i + 3
     end
 end
 
@@ -563,26 +747,31 @@ function MyGreeting_GetGearScore(name, whisperTo)
         return
     end
     local info = data[name]
-    GearSend(name .. "  장비점수: " .. ScoreStr(info) .. SpecToString(info.specs) .. "  (수집: " .. (info.date or "?") .. ")", whisperTo)
+    local best = GetBestSpec(info)
+    if not best then
+        GearSend(name .. " 데이터 없음", whisperTo)
+        return
+    end
+    local specLabel = best.name and ("(" .. best.name .. ")") or ""
+    GearSend(name .. specLabel .. "  장비점수: " .. ScoreStr(best) .. "  (수집: " .. (best.date or "?") .. ")", whisperTo)
 
-    if not info.items or #info.items == 0 then
-        -- 구버전 데이터 — 본인이면 즉시 재수집
+    if not best.items or #best.items == 0 then
         local myName = UnitName("player")
         myName = myName and (myName:match("^([^%-]+)") or myName)
         if name == myName then
             local ilvl, gs, items = CollectGear("player")
             if ilvl and items then
-                info.items = items
-                info.ilvl  = ilvl
-                info.gs    = gs
-                info.date  = date("%m/%d %H:%M")
+                best.items = items
+                best.ilvl  = ilvl
+                best.gs    = gs
+                best.date  = date("%m/%d %H:%M")
                 PrintItems(items, whisperTo)
             end
         else
             GearSend("  (장비 목록 없음 — 근처에서 타겟하면 자동 갱신)", whisperTo)
         end
     else
-        PrintItems(info.items, whisperTo)
+        PrintItems(best.items, whisperTo)
     end
 end
 
@@ -593,14 +782,15 @@ function MyGreeting_GetGearSlot(name, slotIds, whisperTo)
         return
     end
     local info = data[name]
-    if not info.items or #info.items == 0 then
+    local best = GetBestSpec(info)
+    if not best or not best.items or #best.items == 0 then
         GearSend(name .. " 장비 목록 없음 — 근처에서 타겟하면 자동 갱신", whisperTo)
         return
     end
     local slotSet = {}
     for _, s in ipairs(slotIds) do slotSet[s] = true end
     local found = false
-    for _, item in ipairs(info.items) do
+    for _, item in ipairs(best.items) do
         if slotSet[item.slot] then
             GearSend(name .. "  " .. ItemDisplay(item), whisperTo)
             found = true
