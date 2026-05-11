@@ -158,6 +158,7 @@ local dungeonGreeted    = {} -- [이름] = {zone, time} : 이미 인사한 던�
 local bgGreeted         = {} -- [이름] = {zone, time} : 이미 인사한 전장 (DB persist)
 local rosterTimer = nil
 local guildCmdCooldown = {} -- [커맨드] = GetTime() : 길드 명령 중복 방지
+local pendingWhoQuery = nil  -- { name, whisperTo } : SendWho 응답 대기
 
 -- ============================================================
 -- 길드 채팅 전송 (모든 길드원에게 보임)
@@ -535,7 +536,9 @@ local function HandleGuildCharInfo(targetName, whisperTo)
                 end
             end
         end
-        GG_Send("[" .. targetName .. "] 길드원을 찾을 수 없습니다", whisperTo)
+        -- 길드원 아니면 SendWho로 서버 전체 검색
+        pendingWhoQuery = { name = targetName, whisperTo = whisperTo }
+        SendWho("n-" .. targetName)
     end)
 end
 
@@ -1033,6 +1036,7 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("GUILD_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_GUILD_UPDATE")
 frame:RegisterEvent("CHAT_MSG_GUILD")
+frame:RegisterEvent("WHO_LIST_UPDATE")
 
 frame:SetScript("OnEvent", function(self, event, ...)
 
@@ -1211,6 +1215,23 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 end)
             end)
         end)
+
+    elseif event == "WHO_LIST_UPDATE" then
+        if not pendingWhoQuery then return end
+        local query = pendingWhoQuery
+        pendingWhoQuery = nil
+        local total = GetNumWhoResults and GetNumWhoResults() or 0
+        for i = 1, total do
+            local name, guild, level, race, class, zone = GetWhoInfo(i)
+            local shortName = name and (name:match("^([^%-]+)") or name)
+            if shortName and shortName:lower() == query.name:lower() then
+                local guildStr = (guild and guild ~= "") and ("[" .. guild .. "]") or "길드 없음"
+                GG_Send(shortName .. "  " .. (class or "?") .. "  " .. (level or "?") .. "레벨  " .. (race or "?"), query.whisperTo)
+                GG_Send("지역: " .. (zone or "-") .. "  /  " .. guildStr, query.whisperTo)
+                return
+            end
+        end
+        GG_Send("[" .. query.name .. "] 온라인 플레이어를 찾을 수 없습니다", query.whisperTo)
 
     elseif event == "CHAT_MSG_GUILD" then
         local msg, sender = ...
