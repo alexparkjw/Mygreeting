@@ -280,6 +280,19 @@ end
 local PROF_KEYWORDS = {
     "대장", "재봉", "연금", "기공", "가세", "보세", "약초", "채광", "채집", "마부", "무두", "요리", "낚시"
 }
+-- 풀네임 → 단축키워드 (쪽지에 풀네임으로 써도 단축키워드로 집계)
+local PROF_ALIASES = {
+    ["보석세공"] = "보세",
+    ["기계공학"] = "기공",
+    ["가죽세공"] = "가세",
+}
+local function ProfMatches(combined, keyword)
+    if combined:find(keyword, 1, true) then return true end
+    for alias, canonical in pairs(PROF_ALIASES) do
+        if canonical == keyword and combined:find(alias, 1, true) then return true end
+    end
+    return false
+end
 
 local function CollectProfessionDistribution(callback)
     C_GuildInfo.GuildRoster()
@@ -290,7 +303,7 @@ local function CollectProfessionDistribution(callback)
             local _, _, _, _, _, _, note, officerNote = GetGuildRosterInfo(i)
             local combined = (note or "") .. " " .. (officerNote or "")
             for _, kw in ipairs(PROF_KEYWORDS) do
-                if combined:find(kw) then
+                if ProfMatches(combined, kw) then
                     counts[kw] = (counts[kw] or 0) + 1
                 end
             end
@@ -332,6 +345,9 @@ local PROF_CMD_KEYWORDS = {}
 for _, kw in ipairs({ "대장", "재봉", "연금", "기공", "가세", "보세", "약초", "채광", "채집", "마부", "무두", "요리", "낚시" }) do
     PROF_CMD_KEYWORDS["!" .. kw] = kw
 end
+for alias, canonical in pairs(PROF_ALIASES) do
+    PROF_CMD_KEYWORDS["!" .. alias] = canonical
+end
 
 local function CollectProfessionMembers(keyword, callback)
     C_GuildInfo.GuildRoster()
@@ -342,7 +358,7 @@ local function CollectProfessionMembers(keyword, callback)
             local name, _, _, level, _, _, note, officerNote, isOnline = GetGuildRosterInfo(i)
             if isOnline and name then
                 local combined = (note or "") .. " " .. (officerNote or "")
-                if combined:find(keyword) then
+                if ProfMatches(combined, keyword) then
                     name = name:match("^([^%-]+)") or name
                     members[#members + 1] = { name = name, level = level }
                 end
