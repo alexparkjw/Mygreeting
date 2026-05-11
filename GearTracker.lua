@@ -614,7 +614,7 @@ end
 -- whisperTo: "LOCAL" = 나만 보임 / 플레이어명 = 귓말 / nil = 길드챗
 -- ============================================================
 -- guildOnly=true면 길드원만, false/nil이면 수집된 전체
--- startFrom: 시작 순위 (기본 1), 10개씩 표시
+-- startFrom: 시작 순위 (기본 1), 5개씩 표시
 -- classFilter: 한글 직업명 (예: "전사") — 해당 직업만
 -- classLabel: 출력용 직업명 (보통 classFilter와 동일)
 function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom, classFilter, classLabel)
@@ -645,7 +645,7 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom, classFilter, 
     end
     table.sort(list, function(a, b) return a.sortKey > b.sortKey end)
 
-    local RANK_LIMIT = 10
+    local RANK_LIMIT = 5
     local total = #list
     local from = math.max(1, tonumber(startFrom) or 1)
     local to   = math.min(total, from + RANK_LIMIT - 1)
