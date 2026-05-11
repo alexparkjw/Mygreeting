@@ -537,8 +537,14 @@ local function HandleGuildCharInfo(targetName, whisperTo)
             end
         end
         -- 길드원 아니면 SendWho로 서버 전체 검색
+        local sendWhoFn = SendWho
+            or (C_FriendList and C_FriendList.SendWho)
+        if not sendWhoFn then
+            GG_Send("[" .. targetName .. "] 길드원을 찾을 수 없습니다", whisperTo)
+            return
+        end
         pendingWhoQuery = { name = targetName, whisperTo = whisperTo }
-        SendWho("n-" .. targetName)
+        sendWhoFn("n-" .. targetName)
     end)
 end
 
@@ -1220,9 +1226,11 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if not pendingWhoQuery then return end
         local query = pendingWhoQuery
         pendingWhoQuery = nil
-        local total = GetNumWhoResults and GetNumWhoResults() or 0
+        local getCount = GetNumWhoResults or (C_FriendList and C_FriendList.GetNumWhoResults)
+        local getInfo  = GetWhoInfo      or (C_FriendList and C_FriendList.GetWhoInfo)
+        local total = getCount and getCount() or 0
         for i = 1, total do
-            local name, guild, level, race, class, zone = GetWhoInfo(i)
+            local name, guild, level, race, class, zone = getInfo(i)
             local shortName = name and (name:match("^([^%-]+)") or name)
             if shortName and shortName:lower() == query.name:lower() then
                 local guildStr = (guild and guild ~= "") and ("[" .. guild .. "]") or "길드 없음"
