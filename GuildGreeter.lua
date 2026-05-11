@@ -62,6 +62,52 @@ local function IsDungeon(zone)
     return DUNGEONS[zone] == true
 end
 
+-- NWB 일반 일퀘 던전 ID → 한글 지역명
+local NWB_NORMAL_DAILY = {
+    [1]="알카트라즈",   [2]="증기 저장고",       [3]="어둠의 미궁",
+    [4]="검은늪",       [5]="으스러진 손의 전당", [6]="마법학자의 정원",
+    [7]="신록의 정원",  [8]="메카르니",
+}
+-- NWB 영웅 일퀘 던전 ID → 한글 지역명
+local NWB_HEROIC_DAILY = {
+    [1]="지하수령",           [2]="신록의 정원",         [3]="검은늪",
+    [4]="으스러진 손의 전당", [5]="피의 용광로",         [6]="어둠의 미궁",
+    [7]="지옥불 성루",        [8]="메카르니",            [9]="마나 무덤",
+    [10]="옛 스브레드 구릉지",[11]="아키나이 납골당",    [12]="세데크 전당",
+    [13]="강제 노역소",       [14]="알카트라즈",         [15]="증기 저장고",
+    [16]="마법학자의 정원",
+}
+-- NWB PvP 일퀘 ID → 한글 전장 지역명 (호드 1-4, 얼라 5-8)
+local NWB_PVP_DAILY = {
+    [1]="전쟁노래 협곡", [2]="아라시 분지", [3]="알터랙 계곡", [4]="폭풍의 눈",
+    [5]="전쟁노래 협곡", [6]="아라시 분지", [7]="알터랙 계곡", [8]="폭풍의 눈",
+}
+-- NWB 데이터에서 오늘의 일퀘 지역명 반환
+local function GetNWBDailyInfo()
+    if not NWBdatabase then return {} end
+    local realm   = GetRealmName()
+    local faction = UnitFactionGroup("player")
+    local d = NWBdatabase.global
+           and NWBdatabase.global[realm]
+           and NWBdatabase.global[realm][faction]
+    if not d then return {} end
+    local now = GetServerTime()
+    return {
+        normalZone = (d.tbcDD and d.tbcDDT and now - d.tbcDDT < 86400) and NWB_NORMAL_DAILY[d.tbcDD] or nil,
+        heroicZone = (d.tbcHD and d.tbcHDT and now - d.tbcHDT < 86400) and NWB_HEROIC_DAILY[d.tbcHD] or nil,
+        pvpZone    = (d.tbcPD and d.tbcPDT and now - d.tbcPDT < 86400) and NWB_PVP_DAILY[d.tbcPD]  or nil,
+    }
+end
+
+local BATTLEGROUNDS = {
+    ["전쟁노래 협곡"]=true, ["아라시 분지"]=true,
+    ["알터랙 계곡"]=true,   ["폭풍의 눈"]=true,
+}
+local function IsBattleground(zone)
+    if not zone or zone == "" then return false end
+    return BATTLEGROUNDS[zone] == true
+end
+
 -- ============================================================
 -- 런타임 변수
 -- ============================================================
@@ -80,7 +126,10 @@ MyGreeting_DEFAULT_MESSAGES = {
     welcome        = "{name} 님 어서오세요",
     rejoin         = "{name} 님 재접하셨습니다 ~리하요",
     sleep          = "{name} 님 푹쉬세요",
-    dungeon        = "{name} 님 [{zone}] 무사히 돌고 득템하세요 :)",
+    dungeon              = "{name} 님 [{zone}] 무사히 돌고 득템하세요 :)",
+    dungeon_daily_normal = "{name} 님 [{zone}] 오늘 일반 일퀘에요! 무사히 돌고 득템하세요 :)",
+    dungeon_daily_heroic = "{name} 님 [{zone}] 오늘 영웅 일퀘에요! 무사히 돌고 득템하세요 :)",
+    battleground_daily   = "{name} 님 [{zone}] 주간 전장! 잘 싸우세요 :)",
     levelup_guild  = "{name} 님 레벨업 축하해요 ({level})",
     summon         = "소환 감사합니다",
     resurrect      = "부활 감사합니다",
@@ -105,7 +154,8 @@ local prevLevels  = {}   -- [이름] = level
 local prevRoster  = {}   -- [이름] = true : 직전 로스터 전체 (온+오프)
 local prevZones   = {}   -- [이름] = zone : 직전 위치
 local lastOffline = {}   -- [이름] = GetTime()
-local dungeonGreeted    = {} -- [이름] = zone : 이미 인사한 던전 (중복 방지)
+local dungeonGreeted    = {} -- [이름] = {zone, time} : 이미 인사한 던전 (DB persist)
+local bgGreeted         = {} -- [이름] = {zone, time} : 이미 인사한 전장 (DB persist)
 local rosterTimer = nil
 local guildCmdCooldown = {} -- [커맨드] = GetTime() : 길드 명령 중복 방지
 
@@ -127,7 +177,7 @@ end
 
 local function GG_Send(msg, whisperTo)
     if not msg or msg == "" then return end
-    if whisperTo ~= "LOCAL" and UnitIsAFK("player") then
+    if whisperTo and whisperTo ~= "LOCAL" and UnitIsAFK("player") then
         msg = "<자리비움> " .. msg
     end
     if whisperTo == "LOCAL" then
@@ -526,24 +576,27 @@ local function GetDailyInfo(key)
     return entry
 end
 
--- Nova World Buffs 애드온에서 오늘 일일 던전 이름을 읽어옴
+-- Nova World Buffs SavedVariables에서 오늘 일일 던전/전장 이름을 읽어옴
 local function GetNWBDailyName(key)
-    if not NWB or not NWB.data then return nil end
-    local id, ts, getData
+    if not NWBdatabase then return nil end
+    local realm   = GetRealmName()
+    local faction = UnitFactionGroup("player")
+    local d = NWBdatabase.global
+           and NWBdatabase.global[realm]
+           and NWBdatabase.global[realm][faction]
+    if not d then return nil end
+    local now = GetServerTime()
     if key == "dailyNormal" then
-        id, ts, getData = NWB.data.tbcDD, NWB.data.tbcDDT, function(i) return NWB:getDungeonDailyData(i) end
+        if not d.tbcDD or not d.tbcDDT or now - d.tbcDDT >= 86400 then return nil end
+        return NWB_NORMAL_DAILY[d.tbcDD]
     elseif key == "dailyHeroic" then
-        id, ts, getData = NWB.data.tbcHD, NWB.data.tbcHDT, function(i) return NWB:getHeroicDailyData(i) end
-    else
-        return nil
+        if not d.tbcHD or not d.tbcHDT or now - d.tbcHDT >= 86400 then return nil end
+        return NWB_HEROIC_DAILY[d.tbcHD]
+    elseif key == "weeklyBG" then
+        if not d.tbcPD or not d.tbcPDT or now - d.tbcPDT >= 86400 then return nil end
+        return NWB_PVP_DAILY[d.tbcPD]
     end
-    if not id or id == 0 then return nil end
-    if not ts or (GetServerTime() - ts) >= 86400 then return nil end
-    local ok, d = pcall(getData, id)
-    if not ok or not d then return nil end
-    local name = d.nameLocale or d.dungeon or "?"
-    local abbrev = d.abbrev and ("(" .. d.abbrev .. ")") or ""
-    return name .. " " .. abbrev
+    return nil
 end
 
 local function HandleDailyQuery(key, whisperTo)
@@ -890,16 +943,44 @@ local function ProcessRosterUpdate()
             local prevZone = prevZones[name] or ""
             local greetEntry = dungeonGreeted[name]
             local recentlyGreeted = greetEntry and greetEntry.zone == zone
-                and (GetTime() - greetEntry.time) < 7200
+                and (time() - greetEntry.time) < 7200
             if zone ~= prevZone and IsDungeon(zone) and not recentlyGreeted then
-                dungeonGreeted[name] = { zone = zone, time = GetTime() }
+                dungeonGreeted[name] = { zone = zone, time = time() }
                 local n2, z2 = name, zone
                 C_Timer.After(GREET_DELAY, function()
-                    GG_Print(MyGreeting_GetMsg("dungeon", {name=n2, zone=z2}))
+                    local daily = GetNWBDailyInfo()
+                    local msgKey = "dungeon"
+                    if daily.normalZone == z2 then msgKey = "dungeon_daily_normal"
+                    elseif daily.heroicZone == z2 then msgKey = "dungeon_daily_heroic"
+                    end
+                    GG_Print(MyGreeting_GetMsg(msgKey, {name=n2, zone=z2}))
                 end)
             end
-            if zone and zone ~= "" and not IsDungeon(zone) then
+            if zone ~= "" and not IsDungeon(zone) and not IsBattleground(zone) then
                 dungeonGreeted[name] = nil
+            end
+        end
+    end
+
+    -- ── 길드원 전장 입장 감지 ─────────────────────────────
+    for name, zone in pairs(currentZones) do
+        if name ~= myName and currentOnline[name] then
+            local prevZone = prevZones[name] or ""
+            local bgEntry = bgGreeted[name]
+            local recentlyGreeted = bgEntry and bgEntry.zone == zone
+                and (time() - bgEntry.time) < 7200
+            if zone ~= prevZone and IsBattleground(zone) and not recentlyGreeted then
+                local daily = GetNWBDailyInfo()
+                if daily.pvpZone == zone then
+                    bgGreeted[name] = { zone = zone, time = time() }
+                    local n2, z2 = name, zone
+                    C_Timer.After(GREET_DELAY, function()
+                        GG_Print(MyGreeting_GetMsg("battleground_daily", {name=n2, zone=z2}))
+                    end)
+                end
+            end
+            if zone ~= "" and not IsBattleground(zone) then
+                bgGreeted[name] = nil
             end
         end
     end
@@ -917,7 +998,9 @@ local function ProcessRosterUpdate()
     prevOnline = currentOnline
     prevLevels = currentLevels
     prevRoster = currentRoster
-    prevZones  = currentZones
+    for name, zone in pairs(currentZones) do
+        if zone ~= "" then prevZones[name] = zone end
+    end
 end
 
 -- ============================================================
@@ -941,7 +1024,11 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if not MyGreetingDB.knownMembers then MyGreetingDB.knownMembers = {} end
         if not MyGreetingDB.messages then MyGreetingDB.messages = {} end
         if not MyGreetingDB.dailyInfo then MyGreetingDB.dailyInfo = {} end
+        if not MyGreetingDB.dungeonGreeted then MyGreetingDB.dungeonGreeted = {} end
+        if not MyGreetingDB.bgGreeted then MyGreetingDB.bgGreeted = {} end
         db = MyGreetingDB
+        dungeonGreeted = db.dungeonGreeted
+        bgGreeted      = db.bgGreeted
 
 
     elseif event == "PLAYER_LOGIN" then
@@ -1078,8 +1165,13 @@ frame:SetScript("OnEvent", function(self, event, ...)
         prevRoster   = {}
         prevZones    = {}
         dungeonGreeted = {}
-        lastOffline  = {}
-        if db then db.knownMembers = {} end
+        bgGreeted      = {}
+        lastOffline    = {}
+        if db then
+            db.knownMembers  = {}
+            db.dungeonGreeted = {}; dungeonGreeted = db.dungeonGreeted
+            db.bgGreeted      = {}; bgGreeted      = db.bgGreeted
+        end
         C_GuildInfo.GuildRoster()
         C_Timer.After(INIT_DELAY, function()
             C_GuildInfo.GuildRoster()
@@ -1507,7 +1599,10 @@ local OPT_FIELDS = {
     { key="welcome",       label="환영 (기존)",      hint="{name} {main}" },
     { key="rejoin",        label="재접속",           hint="{name}" },
     { key="sleep",         label="잠자리 응답",      hint="{name}" },
-    { key="dungeon",       label="던전 입장",        hint="{name} {zone}" },
+    { key="dungeon",             label="던전 입장",          hint="{name} {zone}" },
+    { key="dungeon_daily_normal",label="던전 입장 (일반일퀘)", hint="{name} {zone}" },
+    { key="dungeon_daily_heroic",label="던전 입장 (영웅일퀘)", hint="{name} {zone}" },
+    { key="battleground_daily",  label="전장 입장 (주간전장)", hint="{name} {zone}" },
     { key="levelup_guild", label="레벨업 (길드)",    hint="{name} {level}" },
     { key="summon",        label="소환 감사",        hint="" },
     { key="resurrect",     label="부활 감사",        hint="" },

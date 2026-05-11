@@ -217,7 +217,7 @@ local function SaveSpecData(name, ilvl, gs, items, specs, isInspect, classDispla
     local activeGroup = (GetActiveTalentGroup and GetActiveTalentGroup(isInspect)) or 1
     local specKey = "spec" .. activeGroup
     local specName = (specs and specs[activeGroup] and specs[activeGroup].name) or "?"
-    entry[specKey] = { name=specName, ilvl=ilvl, gs=gs, items=items, date=date("%m/%d %H:%M") }
+    entry[specKey] = { name=specName, ilvl=ilvl, gs=gs, items=items, date=date("%m/%d %H:%M"), time=time() }
     MyGreetingDB.gearData[name] = entry
     return specKey, specName
 end
