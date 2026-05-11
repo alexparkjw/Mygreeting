@@ -278,13 +278,15 @@ local function CollectRaceDistribution(callback)
 end
 
 local PROF_KEYWORDS = {
-    "대장", "재봉", "연금", "기공", "가세", "보세", "약초", "채광", "채집", "마부", "무두", "요리", "낚시"
+    "대장", "재봉", "연금", "기공", "가세", "보세", "채광", "채집", "마부", "무두", "요리", "낚시"
 }
 -- 풀네임 → 단축키워드 (쪽지에 풀네임으로 써도 단축키워드로 집계)
 local PROF_ALIASES = {
     ["보석세공"] = "보세",
     ["기계공학"] = "기공",
     ["가죽세공"] = "가세",
+    ["약초"]     = "채집",
+    ["약초채집"] = "채집",
 }
 local function ProfMatches(combined, keyword)
     if combined:find(keyword, 1, true) then return true end
@@ -342,7 +344,7 @@ local GEAR_SLOT_CMDS = {
 -- 전문기술별 멤버 목록 수집
 -- ============================================================
 local PROF_CMD_KEYWORDS = {}
-for _, kw in ipairs({ "대장", "재봉", "연금", "기공", "가세", "보세", "약초", "채광", "채집", "마부", "무두", "요리", "낚시" }) do
+for _, kw in ipairs({ "대장", "재봉", "연금", "기공", "가세", "보세", "채광", "채집", "마부", "무두", "요리", "낚시" }) do
     PROF_CMD_KEYWORDS["!" .. kw] = kw
 end
 for alias, canonical in pairs(PROF_ALIASES) do
