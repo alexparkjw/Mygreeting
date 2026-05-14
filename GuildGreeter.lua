@@ -666,6 +666,7 @@ local function HandleGuildCommand(cmd, whisperTo)
         GG_Send("!장비 / !장비 [이름] / !장비길드 / !장비전체", whisperTo)
         GG_Send("!길드[명령어] - 길드챗에 출력  예) !길드현황", whisperTo)
         GG_Send("!도움 직업 / !도움 종족 / !도움 전문기술 / !도움 장비 / !도움 일정", whisperTo)
+        GG_Send("![던전] [아이템] - 내 비스 등록  예) !성루 어깨 반지", whisperTo)
     elseif cmd == "help_class" then
         GG_Send("직업별 멤버목록: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드 !죽기", whisperTo)
     elseif cmd == "help_race" then
@@ -1046,6 +1047,22 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if not MyGreetingDB.dailyInfo then MyGreetingDB.dailyInfo = {} end
         if not MyGreetingDB.dungeonGreeted then MyGreetingDB.dungeonGreeted = {} end
         if not MyGreetingDB.bgGreeted then MyGreetingDB.bgGreeted = {} end
+        if not MyGreetingDB.bisItems then MyGreetingDB.bisItems = {} end
+        pcall(function()
+            local pName = UnitName("player")
+            pName = pName and (pName:match("^([^%-]+)") or pName)
+            if not pName then return end
+            local oldFlat = {}
+            for k, v in pairs(MyGreetingDB.bisItems) do
+                if type(v) == "string" then oldFlat[k] = v end
+            end
+            if not next(oldFlat) then return end
+            if not MyGreetingDB.bisItems[pName] then MyGreetingDB.bisItems[pName] = {} end
+            for k, v in pairs(oldFlat) do
+                MyGreetingDB.bisItems[pName][k] = v
+                MyGreetingDB.bisItems[k] = nil
+            end
+        end)
         db = MyGreetingDB
         dungeonGreeted = db.dungeonGreeted
         bgGreeted      = db.bgGreeted
@@ -1342,6 +1359,28 @@ frame:SetScript("OnEvent", function(self, event, ...)
             RouteCommand(plainSub, sender)
         end
 
+        -- !던전 아이템 → 길챗 bis 등록 (기존 명령어 첫 단어 제외)
+        pcall(function()
+            local bisD, bisI = trimmed:match("^!(%S+)%s+(.+)$")
+            if not bisD or not bisI or not db or not db.bisItems then return end
+            local BIS_EXCLUDED = {
+                ["현황"]=true, ["레벨"]=true, ["직업"]=true, ["종족"]=true, ["인던"]=true, ["지역"]=true,
+                ["전문기술"]=true, ["등급"]=true, ["도움"]=true, ["일일"]=true, ["일일일던"]=true,
+                ["일일영던"]=true, ["주간전장"]=true, ["일던"]=true, ["영던"]=true, ["전장"]=true,
+                ["장비"]=true, ["장비현황"]=true, ["장비길드"]=true, ["장비전체"]=true,
+                ["정보"]=true, ["귓말"]=true, ["길드"]=true, ["장비보내기"]=true,
+            }
+            local isExcluded = BIS_EXCLUDED[bisD]
+                or CLASS_KEYWORDS["!" .. bisD]
+                or RACE_KEYWORDS["!" .. bisD]
+                or PROF_CMD_KEYWORDS["!" .. bisD]
+                or GEAR_SLOT_CMDS[bisD]
+            if isExcluded then return end
+            if not db.bisItems[sender] then db.bisItems[sender] = {} end
+            db.bisItems[sender][bisD] = strtrim(bisI)
+            SendChatMessage("[비스] " .. bisD .. " → " .. strtrim(bisI) .. " 등록!", "WHISPER", nil, sender)
+        end)
+
         if sender == myName then return end
 
         local lower = msg:lower()
@@ -1392,7 +1431,6 @@ end)
 -- ============================================================
 SLASH_MYGREETING1 = "/mg"
 SLASH_MYGREETING2 = "/mygreeting"
-SLASH_MYGREETING3 = "/엠지"
 
 SlashCmdList["MYGREETING"] = function(msg)
     msg = strtrim(msg or "")
@@ -1411,6 +1449,9 @@ SlashCmdList["MYGREETING"] = function(msg)
         GG_Send("!현황 / !레벨 / !직업 / !종족 / !지역 / !인던 / !전문기술 / !등급", L)
         GG_Send("!정보 [이름] / !장비 [이름] / !장비길드 / !장비전체", L)
         GG_Send("!머리/목/어깨/등/가슴/벨트/다리/발/손목/손/손가락/장신구/주장비/보조장비/원거리 [이름]", L)
+        GG_Send("─── 비스 ───", L)
+        GG_Send("/엠지 [던전] [아이템] — 내 비스 등록  /엠지 비스 — 전체 목록", L)
+        GG_Send("길챗: ![던전] [아이템] — 개인 비스 등록 (귓말 확인)", L)
         GG_Send("─── 기타 ───", L)
         GG_Send("/mg reset / remove [이름] / status / db", L)
         GG_Send("!도움 직업 / !도움 종족 / !도움 전문기술 / !도움 장비 / !도움 일정", L)
@@ -1604,6 +1645,54 @@ SlashCmdList["MYGREETING"] = function(msg)
                         GG_Send("알 수 없는 명령어. /mg help", "LOCAL")
                     end
                 end
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- /엠지 — BIS 던전-아이템 등록/조회
+-- ============================================================
+SLASH_MGBIS1 = "/엠지"
+SlashCmdList["MGBIS"] = function(msg)
+    msg = strtrim(msg or "")
+    if not db then return end
+    if not db.bisItems then db.bisItems = {} end
+
+    local myChar = myName or UnitName("player")
+    myChar = myChar and (myChar:match("^([^%-]+)") or myChar)
+    if not myChar then return end
+
+    local lower = strlower(msg)
+
+    if msg == "" or lower == "도움" or lower == "help" then
+        GG_Send("/엠지 [던전이름] [아이템이름] — 등록 (재입력 시 덮어씀)", "LOCAL")
+        GG_Send("/엠지 [던전이름] — 해당 던전 조회", "LOCAL")
+        GG_Send("/엠지 비스 — 내 전체 목록", "LOCAL")
+
+    elseif lower == "비스" then
+        local myData = db.bisItems[myChar]
+        if myData and next(myData) then
+            for dungeon, item in pairs(myData) do
+                GG_Send("[비스] " .. dungeon .. " → " .. item, "LOCAL")
+            end
+        else
+            GG_Send("[비스] 등록된 아이템 없음", "LOCAL")
+        end
+
+    else
+        local dungeon, item = msg:match("^(%S+)%s+(.+)$")
+        if dungeon and item then
+            if not db.bisItems[myChar] then db.bisItems[myChar] = {} end
+            db.bisItems[myChar][dungeon] = strtrim(item)
+            GG_Send("[비스] " .. dungeon .. " → " .. strtrim(item) .. " 등록!", "LOCAL")
+        else
+            local myData = db.bisItems[myChar]
+            local found = myData and myData[msg]
+            if found then
+                GG_Send("[비스] " .. msg .. " → " .. found, "LOCAL")
+            else
+                GG_Send("[비스] " .. msg .. " — 등록없음", "LOCAL")
             end
         end
     end
