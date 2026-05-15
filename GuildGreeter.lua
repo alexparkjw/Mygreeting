@@ -62,26 +62,49 @@ local function IsDungeon(zone)
     return DUNGEONS[zone] == true
 end
 
--- NWB 일반 일퀘 던전 ID → 한글 지역명
-local NWB_NORMAL_DAILY = {
-    [1]="알카트라즈",   [2]="증기 저장고",       [3]="어둠의 미궁",
-    [4]="검은늪",       [5]="으스러진 손의 전당", [6]="마법학자의 정원",
-    [7]="신록의 정원",  [8]="메카르니",
+-- NWB 영문 던전명 → 한글 지역명
+local NWB_DUNGEON_KO = {
+    ["The Arcatraz"]          = "알카트라즈",
+    ["The Steamvault"]        = "증기 저장고",
+    ["Shadow Labyrinth"]      = "어둠의 미궁",
+    ["Black Morass"]          = "검은늪",
+    ["Shattered Halls"]       = "으스러진 손의 전당",
+    ["The Shattered Halls"]   = "으스러진 손의 전당",
+    ["Magisters' Terrace"]    = "마법학자의 정원",
+    ["The Botanica"]          = "신록의 정원",
+    ["The Mechanar"]          = "메카르니",
+    ["The Underbog"]          = "지하수령",
+    ["The Blood Furnace"]     = "피의 용광로",
+    ["Hellfire Ramparts"]     = "지옥불 성루",
+    ["Mana-Tombs"]            = "마나 무덤",
+    ["Old Hillsbrad Foothills"] = "옛 힐스브레드 구릉지",
+    ["Auchenai Crypts"]       = "아키나이 납골당",
+    ["Sethekk Halls"]         = "세데크 전당",
+    ["The Slave Pens"]        = "강제 노역소",
 }
--- NWB 영웅 일퀘 던전 ID → 한글 지역명
-local NWB_HEROIC_DAILY = {
-    [1]="지하수령",           [2]="신록의 정원",         [3]="검은늪",
-    [4]="으스러진 손의 전당", [5]="피의 용광로",         [6]="어둠의 미궁",
-    [7]="지옥불 성루",        [8]="메카르니",            [9]="마나 무덤",
-    [10]="옛 스브레드 구릉지",[11]="아키나이 납골당",    [12]="세데크 전당",
-    [13]="강제 노역소",       [14]="알카트라즈",         [15]="증기 저장고",
-    [16]="마법학자의 정원",
-}
--- NWB PvP 일퀘 ID → 한글 전장 지역명 (호드 1-4, 얼라 5-8)
+-- NWB PvP 일퀘 ID → 한글 전장 지역명 (ID는 안정적이므로 유지)
 local NWB_PVP_DAILY = {
     [1]="전쟁노래 협곡", [2]="아라시 분지", [3]="알터랙 계곡", [4]="폭풍의 눈",
     [5]="전쟁노래 협곡", [6]="아라시 분지", [7]="알터랙 계곡", [8]="폭풍의 눈",
 }
+
+-- NWB addon 객체에서 영문 던전명을 가져와 한글로 변환
+local function NWBLookupName(nwbObj, lookupFn, id)
+    if not nwbObj or not nwbObj[lookupFn] then return nil end
+    local ok, data = pcall(nwbObj[lookupFn], nwbObj, id)
+    if not ok or not data then return nil end
+    local eng = data.dungeon or data.name
+    return eng and (NWB_DUNGEON_KO[eng] or eng) or nil
+end
+
+local function GetNWBObj()
+    if not LibStub then return nil end
+    local ok, ace = pcall(LibStub, "AceAddon-3.0")
+    if not ok or not ace then return nil end
+    local ok2, obj = pcall(ace.GetAddon, ace, "NovaWorldBuffs", true)
+    return ok2 and obj or nil
+end
+
 -- NWB 데이터에서 오늘의 일퀘 지역명 반환
 local function GetNWBDailyInfo()
     if not NWBdatabase then return {} end
@@ -92,10 +115,14 @@ local function GetNWBDailyInfo()
            and NWBdatabase.global[realm][faction]
     if not d then return {} end
     local now = GetServerTime()
+    local nwb = GetNWBObj()
     return {
-        normalZone = (d.tbcDD and d.tbcDDT and now - d.tbcDDT < 86400) and NWB_NORMAL_DAILY[d.tbcDD] or nil,
-        heroicZone = (d.tbcHD and d.tbcHDT and now - d.tbcHDT < 86400) and NWB_HEROIC_DAILY[d.tbcHD] or nil,
-        pvpZone    = (d.tbcPD and d.tbcPDT and now - d.tbcPDT < 86400) and NWB_PVP_DAILY[d.tbcPD]  or nil,
+        normalZone = (d.tbcDD and d.tbcDDT and now - d.tbcDDT < 86400)
+                     and NWBLookupName(nwb, "getDungeonDailyData", d.tbcDD) or nil,
+        heroicZone = (d.tbcHD and d.tbcHDT and now - d.tbcHDT < 86400)
+                     and NWBLookupName(nwb, "getHeroicDailyData", d.tbcHD) or nil,
+        pvpZone    = (d.tbcPD and d.tbcPDT and now - d.tbcPDT < 86400)
+                     and NWB_PVP_DAILY[d.tbcPD] or nil,
     }
 end
 
@@ -606,12 +633,13 @@ local function GetNWBDailyName(key)
            and NWBdatabase.global[realm][faction]
     if not d then return nil end
     local now = GetServerTime()
+    local nwb = GetNWBObj()
     if key == "dailyNormal" then
         if not d.tbcDD or not d.tbcDDT or now - d.tbcDDT >= 86400 then return nil end
-        return NWB_NORMAL_DAILY[d.tbcDD]
+        return NWBLookupName(nwb, "getDungeonDailyData", d.tbcDD)
     elseif key == "dailyHeroic" then
         if not d.tbcHD or not d.tbcHDT or now - d.tbcHDT >= 86400 then return nil end
-        return NWB_HEROIC_DAILY[d.tbcHD]
+        return NWBLookupName(nwb, "getHeroicDailyData", d.tbcHD)
     elseif key == "weeklyBG" then
         if not d.tbcPD or not d.tbcPDT or now - d.tbcPDT >= 86400 then return nil end
         return NWB_PVP_DAILY[d.tbcPD]
@@ -1359,8 +1387,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
             RouteCommand(plainSub, sender)
         end
 
-        -- !던전 아이템 → 길챗 bis 등록 (기존 명령어 첫 단어 제외)
-        pcall(function()
+        -- !던전 아이템 → 길챗 bis 등록 (기존 명령어 첫 단어 제외, !길드X 제외)
+        if not guildSub then pcall(function()
             local bisD, bisI = trimmed:match("^!(%S+)%s+(.+)$")
             if not bisD or not bisI or not db or not db.bisItems then return end
             local BIS_EXCLUDED = {
@@ -1379,7 +1407,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
             if not db.bisItems[sender] then db.bisItems[sender] = {} end
             db.bisItems[sender][bisD] = strtrim(bisI)
             SendChatMessage("[비스] " .. bisD .. " → " .. strtrim(bisI) .. " 등록!", "WHISPER", nil, sender)
-        end)
+        end) end
 
         if sender == myName then return end
 
@@ -1431,6 +1459,7 @@ end)
 -- ============================================================
 SLASH_MYGREETING1 = "/mg"
 SLASH_MYGREETING2 = "/mygreeting"
+SLASH_MYGREETING3 = "/엠지"
 
 SlashCmdList["MYGREETING"] = function(msg)
     msg = strtrim(msg or "")
@@ -1624,6 +1653,18 @@ SlashCmdList["MYGREETING"] = function(msg)
             HandleGuildRaceList(RACE_KEYWORDS["!" .. msg], "LOCAL")
         elseif PROF_CMD_KEYWORDS["!" .. msg] then
             HandleGuildProfList(PROF_CMD_KEYWORDS["!" .. msg], "LOCAL")
+        elseif lower == "비스" then
+            if not db.bisItems then db.bisItems = {} end
+            local myChar2 = myName or UnitName("player")
+            myChar2 = myChar2 and (myChar2:match("^([^%-]+)") or myChar2)
+            local myData = myChar2 and db.bisItems[myChar2]
+            if myData and next(myData) then
+                for dungeon, item in pairs(myData) do
+                    GG_Send("[비스] " .. dungeon .. " → " .. item, "LOCAL")
+                end
+            else
+                GG_Send("[비스] 등록된 아이템 없음", "LOCAL")
+            end
         else
             local slotCmd, slotTarget = msg:match("^(%S+)%s+(.+)$")
             if not slotCmd then slotCmd = msg end
@@ -1641,58 +1682,29 @@ SlashCmdList["MYGREETING"] = function(msg)
                     local rankT = msg:match("^등급%s+(.+)$")
                     if rankT then
                         HandleGuildCommand("rank:" .. strtrim(rankT), "LOCAL")
+                    elseif slotTarget then
+                        -- BIS 등록: /엠지 [던전] [아이템]
+                        if not db.bisItems then db.bisItems = {} end
+                        local myChar2 = myName or UnitName("player")
+                        myChar2 = myChar2 and (myChar2:match("^([^%-]+)") or myChar2)
+                        if myChar2 then
+                            if not db.bisItems[myChar2] then db.bisItems[myChar2] = {} end
+                            db.bisItems[myChar2][slotCmd] = strtrim(slotTarget)
+                            GG_Send("[비스] " .. slotCmd .. " → " .. strtrim(slotTarget) .. " 등록!", "LOCAL")
+                        end
                     else
-                        GG_Send("알 수 없는 명령어. /mg help", "LOCAL")
+                        -- BIS 조회: /엠지 [던전]
+                        if not db.bisItems then db.bisItems = {} end
+                        local myChar2 = myName or UnitName("player")
+                        myChar2 = myChar2 and (myChar2:match("^([^%-]+)") or myChar2)
+                        local found = myChar2 and db.bisItems[myChar2] and db.bisItems[myChar2][msg]
+                        if found then
+                            GG_Send("[비스] " .. msg .. " → " .. found, "LOCAL")
+                        else
+                            GG_Send("알 수 없는 명령어. /mg help", "LOCAL")
+                        end
                     end
                 end
-            end
-        end
-    end
-end
-
--- ============================================================
--- /엠지 — BIS 던전-아이템 등록/조회
--- ============================================================
-SLASH_MGBIS1 = "/엠지"
-SlashCmdList["MGBIS"] = function(msg)
-    msg = strtrim(msg or "")
-    if not db then return end
-    if not db.bisItems then db.bisItems = {} end
-
-    local myChar = myName or UnitName("player")
-    myChar = myChar and (myChar:match("^([^%-]+)") or myChar)
-    if not myChar then return end
-
-    local lower = strlower(msg)
-
-    if msg == "" or lower == "도움" or lower == "help" then
-        GG_Send("/엠지 [던전이름] [아이템이름] — 등록 (재입력 시 덮어씀)", "LOCAL")
-        GG_Send("/엠지 [던전이름] — 해당 던전 조회", "LOCAL")
-        GG_Send("/엠지 비스 — 내 전체 목록", "LOCAL")
-
-    elseif lower == "비스" then
-        local myData = db.bisItems[myChar]
-        if myData and next(myData) then
-            for dungeon, item in pairs(myData) do
-                GG_Send("[비스] " .. dungeon .. " → " .. item, "LOCAL")
-            end
-        else
-            GG_Send("[비스] 등록된 아이템 없음", "LOCAL")
-        end
-
-    else
-        local dungeon, item = msg:match("^(%S+)%s+(.+)$")
-        if dungeon and item then
-            if not db.bisItems[myChar] then db.bisItems[myChar] = {} end
-            db.bisItems[myChar][dungeon] = strtrim(item)
-            GG_Send("[비스] " .. dungeon .. " → " .. strtrim(item) .. " 등록!", "LOCAL")
-        else
-            local myData = db.bisItems[myChar]
-            local found = myData and myData[msg]
-            if found then
-                GG_Send("[비스] " .. msg .. " → " .. found, "LOCAL")
-            else
-                GG_Send("[비스] " .. msg .. " — 등록없음", "LOCAL")
             end
         end
     end
