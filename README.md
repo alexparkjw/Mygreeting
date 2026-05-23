@@ -213,6 +213,48 @@ Features automatic guild greetings, party greetings, buff/heal thanks, and gear 
 
 ---
 
+## 장비 자동 갱신 (Python 스크립트)
+
+블리자드 API로 길드원 장비를 주기적으로 자동 수집합니다.
+
+### 설치
+
+```bash
+pip3 install requests python-dotenv
+```
+
+### API 키 설정
+
+`.env.example`을 복사해서 `.env` 파일 생성 후 블리자드 API 키 입력:
+
+```bash
+cp .env.example .env
+```
+
+블리자드 API 키 발급: https://develop.battle.net
+
+### 수동 실행
+
+```bash
+python3 wow_sync.py
+```
+
+WoW 실행 중일 때만 동작합니다. 완료 후 게임에서 `/reload` 하면 반영됩니다.
+
+### 자동 실행 (cron, 30분 주기)
+
+```bash
+crontab -e
+```
+
+아래 줄 추가 (경로는 실제 경로로 수정):
+
+```
+*/30 * * * * /opt/homebrew/bin/python3 /path/to/MyGreeting/wow_sync.py >> /tmp/wow_sync.log 2>&1
+```
+
+---
+
 ## 요구사항 / Requirements
 
 - WoW Classic Anniversary (Interface 20505)
