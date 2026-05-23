@@ -92,10 +92,8 @@ local function NWBLookupName(nwbObj, lookupFn, id)
     if not nwbObj or not nwbObj[lookupFn] then return nil end
     local ok, data = pcall(nwbObj[lookupFn], nwbObj, id)
     if not ok or not data then return nil end
-    local questName = data.nameLocale or data.name
-    if not questName then return nil end
-    questName = questName:gsub("^Wanted: ", "")
-    return questName .. " (" .. (data.abbrev or "?") .. ")"
+    local eng = data.dungeon or data.name
+    return eng and (NWB_DUNGEON_KO[eng] or eng) or nil
 end
 
 local function GetNWBObj()
