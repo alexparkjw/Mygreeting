@@ -696,12 +696,18 @@ local function HandleGuildCommand(cmd, whisperTo)
     end
 
     if cmd == "help" then
-        GG_Send("!현황 / !레벨 / !직업 / !종족 / !지역 / !인던 / !전문기술 / !등급", whisperTo)
-        GG_Send("!정보 [이름] - 길드원 상세 정보", whisperTo)
-        GG_Send("!장비 / !장비 [이름] / !장비길드 / !장비전체", whisperTo)
-        GG_Send("!길드[명령어] - 길드챗에 출력  예) !길드현황", whisperTo)
-        GG_Send("!도움 직업 / !도움 종족 / !도움 전문기술 / !도움 장비 / !도움 일정", whisperTo)
-        GG_Send("![던전] [아이템] - 내 비스 등록  예) !성루 어깨 반지", whisperTo)
+        GG_Send("── 현황 명령어 ──────────────────", whisperTo)
+        GG_Send("!현황  !레벨  !직업  !종족  !지역  !인던  !전문기술  !등급", whisperTo)
+        GG_Send("!정보 [이름]", whisperTo)
+        GG_Send("── 장비 명령어 ──────────────────", whisperTo)
+        GG_Send("!장비 [이름]  !장비길드  !장비전체", whisperTo)
+        GG_Send("!도움 장비  — 슬롯별 조회 명령어 보기", whisperTo)
+        GG_Send("── 일정 명령어 ──────────────────", whisperTo)
+        GG_Send("!일일  !일던  !영던  !전장", whisperTo)
+        GG_Send("── 기타 명령어 ──────────────────", whisperTo)
+        GG_Send("!길드[명령어]  — 길드챗으로 출력  예) !길드현황", whisperTo)
+        GG_Send("![던전] [아이템]  — 비스 등록  예) !성루 어깨", whisperTo)
+        GG_Send("!도움 직업 / 종족 / 전문기술 / 일정  — 상세 보기", whisperTo)
     elseif cmd == "help_class" then
         GG_Send("직업별 멤버목록: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드 !죽기", whisperTo)
     elseif cmd == "help_race" then
