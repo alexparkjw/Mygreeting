@@ -223,6 +223,17 @@ Features automatic guild greetings, party greetings, buff/heal thanks, and gear 
 pip3 install requests python-dotenv
 ```
 
+### 길드 설정
+
+`get_guild_equipment.py` 상단의 `GUILDS`와 `REALM`을 본인 서버/길드에 맞게 수정:
+
+```python
+REALM = "fengus-ferocity"       # 서버명 (영문 소문자, 공백은 하이픈)
+GUILDS = ["my-guild"]           # 길드명 (영문 소문자, 공백은 하이픈, 여러 개 가능)
+```
+
+한글 길드명은 그대로 입력합니다: `GUILDS = ["불꽃-싸다구"]`
+
 ### API 키 설정
 
 `.env.example`을 복사해서 `.env` 파일 생성 후 블리자드 API 키 입력:
