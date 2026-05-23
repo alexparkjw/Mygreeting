@@ -11,3 +11,5 @@ PartyGreeter.lua
 BuffGreeter.lua
 GearTracker.lua
 MyTarget.lua
+DruidHelper.lua
+GearImport.lua

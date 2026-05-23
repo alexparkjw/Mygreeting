@@ -533,6 +533,42 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
         end
 
     elseif event == "PLAYER_LOGIN" then
+        C_Timer.After(1, function()
+            if not MyGreeting_ImportData or not MyGreeting_ImportData.members then return end
+            if not MyGreetingDB then return end
+            if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
+
+            local importTs = MyGreeting_ImportData.fetched_at or 0
+            if importTs <= (MyGreetingDB.lastAPIImport or 0) then return end
+
+            local count = 0
+            for name, apiData in pairs(MyGreeting_ImportData.members) do
+                local existing = MyGreetingDB.gearData[name]
+                if not existing then
+                    MyGreetingDB.gearData[name] = {
+                        class = apiData.class or "",
+                        spec1 = {
+                            name = "?", ilvl = apiData.ilvl or 0, gs = false,
+                            items = apiData.items or {}, date = apiData.date or "", time = importTs,
+                        },
+                    }
+                else
+                    local s = existing.spec1 or {}
+                    s.items = apiData.items or s.items
+                    s.ilvl  = apiData.ilvl or s.ilvl
+                    s.date  = apiData.date or s.date
+                    s.time  = importTs
+                    if not existing.class or existing.class == "" then
+                        existing.class = apiData.class or ""
+                    end
+                    existing.spec1 = s
+                end
+                count = count + 1
+            end
+
+            MyGreetingDB.lastAPIImport = importTs
+            DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r API 장비 임포트: " .. count .. "명")
+        end)
         C_Timer.After(3, CollectSelf)
         C_Timer.After(5, function()
             local data = MyGreetingDB and MyGreetingDB.gearData
@@ -602,10 +638,15 @@ GearSend = function(msg, whisperTo)
     end
     if whisperTo == "LOCAL" then
         DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r " .. msg)
-    elseif whisperTo then
-        SendChatMessage(msg, "WHISPER", nil, whisperTo)
     else
-        SendChatMessage(msg, "GUILD")
+        -- 캐시에 없는 아이템 링크는 SendChatMessage를 막으므로 텍스트로 변환
+        local stripped = msg:gsub("|c%x%x%x%x%x%x%x%x|H[^|]+|h(.-)|h|r", "%1")
+                            :gsub("|c%x%x%x%x%x%x%x%x(.-)%|r", "%1")
+        if whisperTo then
+            SendChatMessage(stripped, "WHISPER", nil, whisperTo)
+        else
+            SendChatMessage(stripped, "GUILD")
+        end
     end
 end
 
@@ -701,42 +742,44 @@ local function PrintItems(items, whisperTo)
         end
     end
 
-    local msgIdx = 0
-    local function send(line)
-        if whisperTo == "LOCAL" then
-            GearSend(line, whisperTo)
-        else
-            msgIdx = msgIdx + 1
-            C_Timer.After(msgIdx * 0.8, function() GearSend(line, whisperTo) end)
+    if whisperTo == "LOCAL" then
+        -- LOCAL: 그룹 슬롯 묶어서 출력
+        for _, group in ipairs(SLOT_GROUPS) do
+            local parts = {}
+            for _, slot in ipairs(group.slots) do
+                if bySlot[slot] then parts[#parts + 1] = ItemDisplay(bySlot[slot]) end
+            end
+            if #parts > 0 then GearSend(table.concat(parts, " / "), whisperTo) end
         end
-    end
-
-    -- 그룹 슬롯 묶어서 전송
-    for _, group in ipairs(SLOT_GROUPS) do
-        local parts = {}
-        for _, slot in ipairs(group.slots) do
-            if bySlot[slot] then
-                parts[#parts + 1] = ItemDisplay(bySlot[slot])
+        local rest = {}
+        for _, item in ipairs(items) do
+            if not SKIP_SLOTS[item.slot] and not GROUPED_SLOTS[item.slot] then
+                rest[#rest + 1] = item
             end
         end
-        if #parts > 0 then send(table.concat(parts, " / ")) end
-    end
-
-    -- 나머지 슬롯 3개씩 묶어서 전송
-    local rest = {}
-    for _, item in ipairs(items) do
-        if not SKIP_SLOTS[item.slot] and not GROUPED_SLOTS[item.slot] then
-            rest[#rest + 1] = item
+        local i = 1
+        while i <= #rest do
+            local parts = {}
+            for j = i, math.min(i + 2, #rest) do parts[#parts + 1] = ItemDisplay(rest[j]) end
+            GearSend(table.concat(parts, " / "), whisperTo)
+            i = i + 3
         end
-    end
-    local i = 1
-    while i <= #rest do
-        local parts = {}
-        for j = i, math.min(i + 2, #rest) do
-            parts[#parts + 1] = ItemDisplay(rest[j])
+    else
+        -- 귓말/길드: 2개씩, 0.8초 간격 전송 (255바이트 제한 대응)
+        local filtered = {}
+        for _, item in ipairs(items) do
+            if not SKIP_SLOTS[item.slot] then filtered[#filtered + 1] = item end
         end
-        send(table.concat(parts, " / "))
-        i = i + 3
+        local msgIdx = 0
+        local i = 1
+        while i <= #filtered do
+            local parts = {}
+            for j = i, math.min(i + 1, #filtered) do parts[#parts + 1] = ItemDisplay(filtered[j]) end
+            local line = table.concat(parts, " / ")
+            msgIdx = msgIdx + 1
+            C_Timer.After(msgIdx * 0.8, function() GearSend(line, whisperTo) end)
+            i = i + 2
+        end
     end
 end
 
