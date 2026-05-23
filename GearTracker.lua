@@ -769,10 +769,12 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom, classFilter, 
 end
 
 local SLOT_GROUPS = {
-    { slots = {11, 12, 13, 14} },  -- 반지1, 반지2, 장신구1, 장신구2
-    { slots = {16, 17, 18} },      -- 주장비, 보조장비, 원거리
+    { slots = {1, 2, 3} },          -- 머리, 목, 어깨
+    { slots = {15, 5, 9} },         -- 등, 가슴, 손목
+    { slots = {10, 6, 7, 8} },      -- 손, 허리, 다리, 발
+    { slots = {11, 12, 13, 14} },   -- 반지1, 반지2, 장신구1, 장신구2
+    { slots = {16, 17, 18} },       -- 주장비, 보조장비, 원거리
 }
-local GROUPED_SLOTS = { [11]=true, [12]=true, [13]=true, [14]=true, [16]=true, [17]=true, [18]=true }
 
 local function PrintItems(items, whisperTo)
     if not items or #items == 0 then return end
@@ -784,43 +786,22 @@ local function PrintItems(items, whisperTo)
         end
     end
 
+    -- 그룹별로 한 줄씩 출력
+    local lines = {}
+    for _, group in ipairs(SLOT_GROUPS) do
+        local parts = {}
+        for _, slot in ipairs(group.slots) do
+            if bySlot[slot] then parts[#parts + 1] = ItemDisplay(bySlot[slot]) end
+        end
+        if #parts > 0 then lines[#lines + 1] = table.concat(parts, " / ") end
+    end
+
     if whisperTo == "LOCAL" then
-        -- LOCAL: 그룹 슬롯 묶어서 출력
-        for _, group in ipairs(SLOT_GROUPS) do
-            local parts = {}
-            for _, slot in ipairs(group.slots) do
-                if bySlot[slot] then parts[#parts + 1] = ItemDisplay(bySlot[slot]) end
-            end
-            if #parts > 0 then GearSend(table.concat(parts, " / "), whisperTo) end
-        end
-        local rest = {}
-        for _, item in ipairs(items) do
-            if not SKIP_SLOTS[item.slot] and not GROUPED_SLOTS[item.slot] then
-                rest[#rest + 1] = item
-            end
-        end
-        local i = 1
-        while i <= #rest do
-            local parts = {}
-            for j = i, math.min(i + 2, #rest) do parts[#parts + 1] = ItemDisplay(rest[j]) end
-            GearSend(table.concat(parts, " / "), whisperTo)
-            i = i + 3
-        end
+        for _, line in ipairs(lines) do GearSend(line, whisperTo) end
     else
-        -- 귓말/길드: 2개씩, 0.8초 간격 전송 (255바이트 제한 대응)
-        local filtered = {}
-        for _, item in ipairs(items) do
-            if not SKIP_SLOTS[item.slot] then filtered[#filtered + 1] = item end
-        end
-        local msgIdx = 0
-        local i = 1
-        while i <= #filtered do
-            local parts = {}
-            for j = i, math.min(i + 1, #filtered) do parts[#parts + 1] = ItemDisplay(filtered[j]) end
-            local line = table.concat(parts, " / ")
-            msgIdx = msgIdx + 1
-            C_Timer.After(msgIdx * 0.8, function() GearSend(line, whisperTo) end)
-            i = i + 2
+        for i, line in ipairs(lines) do
+            local l = line
+            C_Timer.After(i * 0.8, function() GearSend(l, whisperTo) end)
         end
     end
 end
