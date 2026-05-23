@@ -724,17 +724,10 @@ function MyGreeting_PrintGearRank(whisperTo, guildOnly, startFrom, classFilter, 
         local passGuild = not guildOnly or IsGuildMember(name)
         local passClass = not classFilter or info.class == classFilter
         if passGuild and passClass then
-            local added = false
-            for _, key in ipairs({"spec1", "spec2"}) do
-                local spec = info[key]
-                if spec then
-                    local sortKey = spec.gs or spec.ilvl or 0
-                    list[#list + 1] = { name = name .. "(" .. (spec.name or "?") .. ")", info = spec, sortKey = sortKey }
-                    added = true
-                end
-            end
-            if not added and info.ilvl then  -- 구버전 데이터 폴백
-                list[#list + 1] = { name = name, info = info, sortKey = info.gs or info.ilvl or 0 }
+            local best = GetBestSpec(info)
+            if best then
+                local sortKey = best.gs or best.ilvl or 0
+                list[#list + 1] = { name = name .. "(" .. (best.name or "?") .. ")", info = best, sortKey = sortKey }
             end
         end
     end
