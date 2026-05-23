@@ -534,43 +534,44 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "PLAYER_LOGIN" then
         C_Timer.After(1, function()
-            if not MyGreeting_ImportData or not MyGreeting_ImportData.members then return end
             if not MyGreetingDB then return end
             if not MyGreetingDB.gearData then MyGreetingDB.gearData = {} end
 
-            local importTs = MyGreeting_ImportData.fetched_at or 0
-            if importTs <= (MyGreetingDB.lastAPIImport or 0) then return end
-
-            local count = 0
-            for name, apiData in pairs(MyGreeting_ImportData.members) do
-                local existing = MyGreetingDB.gearData[name]
-                if not existing then
-                    MyGreetingDB.gearData[name] = {
-                        class = apiData.class or "",
-                        spec1 = {
-                            name = "?", ilvl = apiData.ilvl or 0, gs = false,
-                            items = apiData.items or {}, date = apiData.date or "", time = importTs,
-                        },
-                    }
-                else
-                    local s = existing.spec1 or {}
-                    s.items = apiData.items or s.items
-                    s.ilvl  = apiData.ilvl or s.ilvl
-                    s.date  = apiData.date or s.date
-                    s.time  = importTs
-                    if not existing.class or existing.class == "" then
-                        existing.class = apiData.class or ""
+            -- 새 API 데이터가 있으면 임포트
+            if MyGreeting_ImportData and MyGreeting_ImportData.members then
+                local importTs = MyGreeting_ImportData.fetched_at or 0
+                if importTs > (MyGreetingDB.lastAPIImport or 0) then
+                    local count = 0
+                    for name, apiData in pairs(MyGreeting_ImportData.members) do
+                        local existing = MyGreetingDB.gearData[name]
+                        if not existing then
+                            MyGreetingDB.gearData[name] = {
+                                class = apiData.class or "",
+                                spec1 = {
+                                    name = "?", ilvl = apiData.ilvl or 0, gs = false,
+                                    items = apiData.items or {}, date = apiData.date or "", time = importTs,
+                                },
+                            }
+                        else
+                            local s = existing.spec1 or {}
+                            s.items = apiData.items or s.items
+                            s.ilvl  = apiData.ilvl or s.ilvl
+                            s.date  = apiData.date or s.date
+                            s.time  = importTs
+                            if not existing.class or existing.class == "" then
+                                existing.class = apiData.class or ""
+                            end
+                            existing.spec1 = s
+                        end
+                        count = count + 1
                     end
-                    existing.spec1 = s
+                    MyGreetingDB.lastAPIImport = importTs
+                    DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r API 장비 임포트: " .. count .. "명")
                 end
-                count = count + 1
             end
 
-            MyGreetingDB.lastAPIImport = importTs
-            DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r API 장비 임포트: " .. count .. "명")
-
-            -- 아이템 ID 수집 → GetItemInfo로 캐시 로드 → 정식 링크로 교체
-            local idSet = {}  -- itemId → true
+            -- 매 로그인마다 gearData 아이템 링크 캐시 로드
+            local idSet = {}
             for _, charData in pairs(MyGreetingDB.gearData) do
                 local spec = charData.spec1
                 if spec and spec.items then
@@ -588,7 +589,7 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
                 end
             end
 
-            if pending == 0 then return end  -- 이미 전부 캐시됨
+            if pending == 0 then return end
 
             local cacheFrame = CreateFrame("Frame")
             cacheFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
@@ -598,7 +599,6 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
                 local _, link = GetItemInfo(itemId)
                 if not link then return end
                 idSet[itemId] = nil
-                -- 이 ID를 가진 모든 아이템 링크 교체
                 for _, charData in pairs(MyGreetingDB.gearData) do
                     local spec = charData.spec1
                     if spec and spec.items then
