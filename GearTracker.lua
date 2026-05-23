@@ -582,23 +582,7 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
                 end
             end
 
-            local pending = 0
-            for id in pairs(idSet) do
-                if not select(2, GetItemInfo(id)) then
-                    pending = pending + 1
-                end
-            end
-
-            if pending == 0 then return end
-
-            local cacheFrame = CreateFrame("Frame")
-            cacheFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
-            cacheFrame:SetScript("OnEvent", function(self, event, itemId)
-                itemId = tonumber(itemId)
-                if not idSet[itemId] then return end
-                local _, link = GetItemInfo(itemId)
-                if not link then return end
-                idSet[itemId] = nil
+            local function ReplaceLink(itemId, link)
                 for _, charData in pairs(MyGreetingDB.gearData) do
                     local spec = charData.spec1
                     if spec and spec.items then
@@ -608,6 +592,34 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
                         end
                     end
                 end
+            end
+
+            -- 이미 캐시된 아이템은 즉시 링크 교체
+            local pending = 0
+            for id in pairs(idSet) do
+                local _, link = GetItemInfo(id)
+                if link then
+                    ReplaceLink(id, link)
+                    idSet[id] = nil
+                else
+                    pending = pending + 1
+                end
+            end
+
+            if pending == 0 then
+                DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r 아이템 링크 캐시 완료")
+                return
+            end
+
+            local cacheFrame = CreateFrame("Frame")
+            cacheFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+            cacheFrame:SetScript("OnEvent", function(self, event, itemId)
+                itemId = tonumber(itemId)
+                if not idSet[itemId] then return end
+                local _, link = GetItemInfo(itemId)
+                if not link then return end
+                idSet[itemId] = nil
+                ReplaceLink(itemId, link)
                 pending = pending - 1
                 if pending <= 0 then
                     self:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
