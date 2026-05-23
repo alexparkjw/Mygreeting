@@ -11,7 +11,7 @@ TOKEN_URL = "https://kr.battle.net/oauth/token"
 API_BASE = "https://kr.api.blizzard.com"
 NAMESPACE_PROFILE = "profile-classicann-kr"
 REALM = "fengus-ferocity"
-GUILD = "moira"
+GUILDS = ["moira", "불꽃-싸다구"]
 
 
 def get_token():
@@ -24,13 +24,15 @@ def get_token():
     return resp.json()["access_token"]
 
 
-def get_roster(token):
+def get_roster(token, guild):
     resp = requests.get(
-        f"{API_BASE}/data/wow/guild/{REALM}/{GUILD}/roster",
+        f"{API_BASE}/data/wow/guild/{REALM}/{guild}/roster",
         params={"namespace": NAMESPACE_PROFILE, "locale": "ko_KR"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        print(f"  [{guild}] 로스터 조회 실패 ({resp.status_code}) — 스킵")
+        return []
     return resp.json()["members"]
 
 
@@ -75,10 +77,24 @@ def main():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 토큰 발급 중...")
     token = get_token()
 
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 길드 {GUILD} 로스터 조회 중...")
-    members = get_roster(token)
-    members = [m for m in members if m["character"].get("level", 0) >= min_level]
-    print(f"  → {len(members)}명 대상\n")
+    members = []
+    for guild in GUILDS:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 길드 {guild} 로스터 조회 중...")
+        roster = get_roster(token, guild)
+        roster = [m for m in roster if m["character"].get("level", 0) >= min_level]
+        print(f"  → {len(roster)}명")
+        members.extend(roster)
+
+    # 중복 캐릭 제거 (같은 캐릭이 두 길드에 있는 경우 대비)
+    seen = set()
+    unique = []
+    for m in members:
+        name = m["character"]["name"]
+        if name not in seen:
+            seen.add(name)
+            unique.append(m)
+    members = unique
+    print(f"  → 전체 {len(members)}명 대상\n")
 
     results = {}
     failed = []
@@ -110,7 +126,7 @@ def main():
         time.sleep(0.1)  # API rate limit 방지
 
     output = {
-        "guild": GUILD,
+        "guilds": GUILDS,
         "realm": REALM,
         "fetched_at": datetime.now().isoformat(),
         "members": results,
