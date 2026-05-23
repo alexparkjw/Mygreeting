@@ -568,6 +568,53 @@ gearFrame:SetScript("OnEvent", function(self, event, ...)
 
             MyGreetingDB.lastAPIImport = importTs
             DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r API 장비 임포트: " .. count .. "명")
+
+            -- 아이템 ID 수집 → GetItemInfo로 캐시 로드 → 정식 링크로 교체
+            local idSet = {}  -- itemId → true
+            for _, charData in pairs(MyGreetingDB.gearData) do
+                local spec = charData.spec1
+                if spec and spec.items then
+                    for _, item in ipairs(spec.items) do
+                        local id = item.link and tonumber(item.link:match("item:(%d+)"))
+                        if id then idSet[id] = true end
+                    end
+                end
+            end
+
+            local pending = 0
+            for id in pairs(idSet) do
+                if not select(2, GetItemInfo(id)) then
+                    pending = pending + 1
+                end
+            end
+
+            if pending == 0 then return end  -- 이미 전부 캐시됨
+
+            local cacheFrame = CreateFrame("Frame")
+            cacheFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+            cacheFrame:SetScript("OnEvent", function(self, event, itemId)
+                itemId = tonumber(itemId)
+                if not idSet[itemId] then return end
+                local _, link = GetItemInfo(itemId)
+                if not link then return end
+                idSet[itemId] = nil
+                -- 이 ID를 가진 모든 아이템 링크 교체
+                for _, charData in pairs(MyGreetingDB.gearData) do
+                    local spec = charData.spec1
+                    if spec and spec.items then
+                        for _, item in ipairs(spec.items) do
+                            local id = item.link and tonumber(item.link:match("item:(%d+)"))
+                            if id == itemId then item.link = link end
+                        end
+                    end
+                end
+                pending = pending - 1
+                if pending <= 0 then
+                    self:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
+                    self:SetScript("OnEvent", nil)
+                    DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r 아이템 링크 캐시 완료")
+                end
+            end)
         end)
         C_Timer.After(3, CollectSelf)
         C_Timer.After(5, function()
@@ -638,15 +685,10 @@ GearSend = function(msg, whisperTo)
     end
     if whisperTo == "LOCAL" then
         DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r " .. msg)
+    elseif whisperTo then
+        SendChatMessage(msg, "WHISPER", nil, whisperTo)
     else
-        -- 캐시에 없는 아이템 링크는 SendChatMessage를 막으므로 텍스트로 변환
-        local stripped = msg:gsub("|c%x%x%x%x%x%x%x%x|H[^|]+|h(.-)|h|r", "%1")
-                            :gsub("|c%x%x%x%x%x%x%x%x(.-)%|r", "%1")
-        if whisperTo then
-            SendChatMessage(stripped, "WHISPER", nil, whisperTo)
-        else
-            SendChatMessage(stripped, "GUILD")
-        end
+        SendChatMessage(msg, "GUILD")
     end
 end
 
