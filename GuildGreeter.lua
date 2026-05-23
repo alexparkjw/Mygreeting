@@ -88,13 +88,14 @@ local NWB_PVP_DAILY = {
     [5]="전쟁노래 협곡", [6]="아라시 분지", [7]="알터랙 계곡", [8]="폭풍의 눈",
 }
 
--- NWB addon 객체에서 영문 던전명을 가져와 한글로 변환
 local function NWBLookupName(nwbObj, lookupFn, id)
     if not nwbObj or not nwbObj[lookupFn] then return nil end
     local ok, data = pcall(nwbObj[lookupFn], nwbObj, id)
     if not ok or not data then return nil end
-    local eng = data.dungeon or data.name
-    return eng and (NWB_DUNGEON_KO[eng] or eng) or nil
+    local questName = data.nameLocale or data.name
+    if not questName then return nil end
+    questName = questName:gsub("^Wanted: ", "")
+    return questName .. " (" .. (data.abbrev or "?") .. ")"
 end
 
 local function GetNWBObj()
