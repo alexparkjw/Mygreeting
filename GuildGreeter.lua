@@ -77,8 +77,8 @@ local NWB_DUNGEON_KO = {
     ["The Blood Furnace"]     = "피의 용광로",
     ["Hellfire Ramparts"]     = "지옥불 성루",
     ["Mana-Tombs"]            = "마나 무덤",
-    ["Old Hillsbrad Foothills"] = "옛 힐스브레드 구릉지",
-    ["Auchenai Crypts"]       = "아키나이 납골당",
+    ["Old Hillsbrad Foothills"] = "옛 스브레드 구릉지",
+    ["Auchenai Crypts"]       = "아키나의 납골당",
     ["Sethekk Halls"]         = "세데크 전당",
     ["The Slave Pens"]        = "강제 노역소",
 }
