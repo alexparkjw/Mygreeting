@@ -200,17 +200,25 @@ local guildCmdCooldown = {} -- [커맨드] = GetTime() : 길드 명령 중복 �
 -- ============================================================
 -- 길드 채팅 전송 (모든 길드원에게 보임)
 -- ============================================================
-local function GG_Print(msg)
-    if paused then return end
-    if not msg or msg == "" then return end
+local function GG_Print(msg, onSent)
+    if paused then
+        if onSent then onSent() end
+        return
+    end
+    if not msg or msg == "" then
+        if onSent then onSent() end
+        return
+    end
     if UnitIsAFK("player") then msg = "<자리비움> " .. msg end
     local box = ChatFrame1EditBox
     if box and box:IsVisible() then
         C_Timer.After(2, function()
             SendChatMessage(msg, "GUILD")
+            if onSent then onSent() end
         end)
     else
         SendChatMessage(msg, "GUILD")
+        if onSent then onSent() end
     end
 end
 
@@ -1170,13 +1178,12 @@ local function ProcessRosterUpdate()
                     if daily.normalZone == z2 then msgKey = "dungeon_daily_normal"
                     elseif daily.heroicZone == z2 then msgKey = "dungeon_daily_heroic"
                     end
-                    GG_Print(MyGreeting_GetMsg(msgKey, {name=n2, zone=z2}))
-                    if MyGreeting_CheckBIS then
-                        local n3, z3 = n2, z2
-                        C_Timer.After(1, function()
+                    local n3, z3 = n2, z2
+                    GG_Print(MyGreeting_GetMsg(msgKey, {name=n2, zone=z2}), function()
+                        if MyGreeting_CheckBIS then
                             MyGreeting_CheckBIS(n3, z3)
-                        end)
-                    end
+                        end
+                    end)
                 end)
             end
         end

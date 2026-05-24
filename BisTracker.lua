@@ -108,21 +108,6 @@ local function GetItemIDFromLink(link)
     return tonumber(link:match("item:(%d+)"))
 end
 
--- spec1, spec2 통틀어 보유 중인 아이템 ID set 반환
-local function GetOwnedIDs(charData)
-    local owned = {}
-    local function scan(spec)
-        if not spec or not spec.items then return end
-        for _, item in ipairs(spec.items) do
-            local id = GetItemIDFromLink(item.link)
-            if id then owned[id] = true end
-        end
-    end
-    scan(charData.spec1)
-    scan(charData.spec2)
-    return owned
-end
-
 -- BisSlotData에서 zone 내 id → {boss, slot} 맵 구성
 -- slot: "1특" / "2특" / nil (spec1/spec2 이름 매칭 기준)
 local function BuildIdBossMap(cls, zone, spec1name, spec2name)
@@ -186,28 +171,18 @@ function MyGreeting_CheckBIS(name, zone)
     end
     if #zoneBis == 0 then return end
 
-    -- 미보유 아이템만 추출
-    local owned = GetOwnedIDs(charData)
-    local missingIDs = {}
-    for _, id in ipairs(zoneBis) do
-        if not owned[id] then
-            missingIDs[#missingIDs + 1] = id
-        end
-    end
-    if #missingIDs == 0 then return end
-
     -- id → {boss, slot} 맵 구성
     local spec1name = charData.spec1 and charData.spec1.name
     local spec2name = charData.spec2 and charData.spec2.name
     local idBoss = BuildIdBossMap(cls, zone, spec1name, spec2name)
 
     -- 비동기 로드 트리거 (캐시 없는 아이템 서버 요청)
-    for _, id in ipairs(missingIDs) do
+    for _, id in ipairs(zoneBis) do
         GetItemInfo(id)
     end
 
     -- 2초 대기 후 아이템 링크 포함 메시지 전송
-    local ids2, idBoss2 = missingIDs, idBoss
+    local ids2, idBoss2, zone2 = zoneBis, idBoss, zone
     C_Timer.After(2, function()
         local parts = {}
         for _, id in ipairs(ids2) do
@@ -215,9 +190,10 @@ function MyGreeting_CheckBIS(name, zone)
             local display = itemLink or (itemName and "[" .. itemName .. "]") or ("[" .. id .. "]")
             local info = idBoss2[id] or {}
             local boss = info.boss or ""
-            local src = BOSS_NAME_KO[boss] or (boss ~= "" and boss or "월드드랍")
-            if info.slot then src = src .. " - " .. info.slot end
-            parts[#parts + 1] = display .. " (" .. src .. ")"
+            local bossKO = BOSS_NAME_KO[boss] or (boss ~= "" and boss or "월드드랍")
+            local src = zone2 .. " - " .. bossKO
+            if info.slot then src = info.slot .. ":" .. src end
+            parts[#parts + 1] = display .. "(" .. src .. ")"
         end
 
         local prefix = "[BIS] "
