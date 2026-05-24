@@ -132,8 +132,8 @@ local function BuildIdBossMap(cls, zone, spec1name, spec2name)
     if not clsBis then return map end
     for specName, specBis in pairs(clsBis) do
         local slot = nil
-        if spec1name and specName == spec1name then slot = "1특"
-        elseif spec2name and specName == spec2name then slot = "2특"
+        if spec1name and specName == spec1name then slot = "p1"
+        elseif spec2name and specName == spec2name then slot = "p2"
         end
         for _, slotItems in pairs(specBis) do
             for _, entry in ipairs(slotItems) do
@@ -145,7 +145,7 @@ local function BuildIdBossMap(cls, zone, spec1name, spec2name)
                         if not existing then
                             map[entry.id].slot = slot
                         elseif existing ~= slot then
-                            map[entry.id].slot = "1특/2특"
+                            map[entry.id].slot = "p1/p2"
                         end
                     end
                 end

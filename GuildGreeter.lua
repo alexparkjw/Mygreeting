@@ -1179,9 +1179,6 @@ local function ProcessRosterUpdate()
                     end
                 end)
             end
-            if zone ~= "" and not IsDungeon(zone) and not IsBattleground(zone) then
-                dungeonGreeted[name] = nil
-            end
         end
     end
 
