@@ -123,17 +123,31 @@ local function GetOwnedIDs(charData)
     return owned
 end
 
--- BisSlotData에서 zone 내 id → boss 역방향 맵 구성
-local function BuildIdBossMap(cls, zone)
+-- BisSlotData에서 zone 내 id → {boss, slot} 맵 구성
+-- slot: "1특" / "2특" / nil (spec1/spec2 이름 매칭 기준)
+local function BuildIdBossMap(cls, zone, spec1name, spec2name)
     local map = {}
     if not MyGreeting_BisSlotData then return map end
     local clsBis = MyGreeting_BisSlotData[cls]
     if not clsBis then return map end
-    for _, specBis in pairs(clsBis) do
+    for specName, specBis in pairs(clsBis) do
+        local slot = nil
+        if spec1name and specName == spec1name then slot = "1특"
+        elseif spec2name and specName == spec2name then slot = "2특"
+        end
         for _, slotItems in pairs(specBis) do
             for _, entry in ipairs(slotItems) do
-                if entry.zone == zone and entry.id and not map[entry.id] then
-                    map[entry.id] = entry.boss or ""
+                if entry.zone == zone and entry.id then
+                    if not map[entry.id] then
+                        map[entry.id] = {boss = entry.boss or "", slot = slot}
+                    elseif slot then
+                        local existing = map[entry.id].slot
+                        if not existing then
+                            map[entry.id].slot = slot
+                        elseif existing ~= slot then
+                            map[entry.id].slot = "1특/2특"
+                        end
+                    end
                 end
             end
         end
@@ -182,8 +196,10 @@ function MyGreeting_CheckBIS(name, zone)
     end
     if #missingIDs == 0 then return end
 
-    -- id → boss 맵 구성
-    local idBoss = BuildIdBossMap(cls, zone)
+    -- id → {boss, slot} 맵 구성
+    local spec1name = charData.spec1 and charData.spec1.name
+    local spec2name = charData.spec2 and charData.spec2.name
+    local idBoss = BuildIdBossMap(cls, zone, spec1name, spec2name)
 
     -- 비동기 로드 트리거 (캐시 없는 아이템 서버 요청)
     for _, id in ipairs(missingIDs) do
@@ -197,8 +213,10 @@ function MyGreeting_CheckBIS(name, zone)
         for _, id in ipairs(ids2) do
             local itemName, itemLink = GetItemInfo(id)
             local display = itemLink or (itemName and "[" .. itemName .. "]") or ("[" .. id .. "]")
-            local boss = idBoss2[id] or ""
+            local info = idBoss2[id] or {}
+            local boss = info.boss or ""
             local src = BOSS_NAME_KO[boss] or (boss ~= "" and boss or "월드드랍")
+            if info.slot then src = src .. " - " .. info.slot end
             parts[#parts + 1] = display .. " (" .. src .. ")"
         end
 
