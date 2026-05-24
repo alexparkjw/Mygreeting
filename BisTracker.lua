@@ -185,30 +185,37 @@ function MyGreeting_CheckBIS(name, zone)
     -- id → boss 맵 구성
     local idBoss = BuildIdBossMap(cls, zone)
 
-    -- 아이템별 "[아이템명] (보스명)" 포맷
-    local parts = {}
+    -- 비동기 로드 트리거 (캐시 없는 아이템 서버 요청)
     for _, id in ipairs(missingIDs) do
-        local itemName, itemLink = GetItemInfo(id)
-        local display = itemLink or (itemName and "[" .. itemName .. "]") or ("[" .. id .. "]")
-        local boss = idBoss[id] or ""
-        local src = BOSS_NAME_KO[boss] or (boss ~= "" and boss or "월드드랍")
-        parts[#parts + 1] = display .. " (" .. src .. ")"
+        GetItemInfo(id)
     end
 
-    -- 250자 제한
-    local prefix = "[BIS] "
-    local msg = prefix .. table.concat(parts, ", ")
-    if #msg > 250 then
-        local fitted = {}
-        local budget = 250 - #prefix - 3
-        local used = 0
-        for i, p in ipairs(parts) do
-            local seg = (i == 1) and p or (", " .. p)
-            if used + #seg > budget then fitted[#fitted + 1] = "..." ; break end
-            fitted[#fitted + 1] = p
-            used = used + #seg
+    -- 2초 대기 후 아이템 링크 포함 메시지 전송
+    local ids2, idBoss2 = missingIDs, idBoss
+    C_Timer.After(2, function()
+        local parts = {}
+        for _, id in ipairs(ids2) do
+            local itemName, itemLink = GetItemInfo(id)
+            local display = itemLink or (itemName and "[" .. itemName .. "]") or ("[" .. id .. "]")
+            local boss = idBoss2[id] or ""
+            local src = BOSS_NAME_KO[boss] or (boss ~= "" and boss or "월드드랍")
+            parts[#parts + 1] = display .. " (" .. src .. ")"
         end
-        msg = prefix .. table.concat(fitted, ", ")
-    end
-    SendChatMessage(msg, "GUILD")
+
+        local prefix = "[BIS] "
+        local msg = prefix .. table.concat(parts, ", ")
+        if #msg > 250 then
+            local fitted = {}
+            local budget = 250 - #prefix - 3
+            local used = 0
+            for i, p in ipairs(parts) do
+                local seg = (i == 1) and p or (", " .. p)
+                if used + #seg > budget then fitted[#fitted + 1] = "..." ; break end
+                fitted[#fitted + 1] = p
+                used = used + #seg
+            end
+            msg = prefix .. table.concat(fitted, ", ")
+        end
+        SendChatMessage(msg, "GUILD")
+    end)
 end
