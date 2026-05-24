@@ -1172,7 +1172,10 @@ local function ProcessRosterUpdate()
                     end
                     GG_Print(MyGreeting_GetMsg(msgKey, {name=n2, zone=z2}))
                     if MyGreeting_CheckBIS then
-                        MyGreeting_CheckBIS(n2, z2)
+                        local n3, z3 = n2, z2
+                        C_Timer.After(1, function()
+                            MyGreeting_CheckBIS(n3, z3)
+                        end)
                     end
                 end)
             end
