@@ -43,18 +43,28 @@ local DUNGEONS = {
     ["피의 용광로"]=true,
     ["으스러진 손의 전당"]=true,
     ["마나 무덤"]=true,
-    ["아키나의 납골당"]=true,
+    ["아키나이 납골당"]=true,
     ["세데크 전당"]=true,
     ["어둠의 미궁"]=true,
     ["강제 노역소"]=true,
     ["지하수령"]=true,
     ["증기 저장고"]=true,
-    ["옛 스브레드 구릉지"]=true,
+    ["옛 힐스브래드 구릉지"]=true,
     ["검은늪"]=true,
     ["알카트라즈"]=true,
     ["신록의 정원"]=true,
-    ["메카르니"]=true,
+    ["메카나르"]=true,
     ["마법학자의 정원"]=true,
+    -- ── TBC 레이드 ────────────────────────────────────────────
+    ["카라잔"]=true,
+    ["그룰의 둥지"]=true,
+    ["마그테리돈의 둥지"]=true,
+    ["불뱀 제단"]=true,
+    ["폭풍우 요새"]=true,
+    ["검은 사원"]=true,
+    ["하이잘 정상"]=true,
+    ["줄아만"]=true,
+    ["태양샘 고원"]=true,
 }
 
 local function IsDungeon(zone)
@@ -72,13 +82,13 @@ local NWB_DUNGEON_KO = {
     ["The Shattered Halls"]   = "으스러진 손의 전당",
     ["Magisters' Terrace"]    = "마법학자의 정원",
     ["The Botanica"]          = "신록의 정원",
-    ["The Mechanar"]          = "메카르니",
+    ["The Mechanar"]          = "메카나르",
     ["The Underbog"]          = "지하수령",
     ["The Blood Furnace"]     = "피의 용광로",
     ["Hellfire Ramparts"]     = "지옥불 성루",
     ["Mana-Tombs"]            = "마나 무덤",
-    ["Old Hillsbrad Foothills"] = "옛 스브레드 구릉지",
-    ["Auchenai Crypts"]       = "아키나의 납골당",
+    ["Old Hillsbrad Foothills"] = "옛 힐스브래드 구릉지",
+    ["Auchenai Crypts"]       = "아키나이 납골당",
     ["Sethekk Halls"]         = "세데크 전당",
     ["The Slave Pens"]        = "강제 노역소",
 }
@@ -129,6 +139,7 @@ local BATTLEGROUNDS = {
     ["전쟁노래 협곡"]=true, ["아라시 분지"]=true,
     ["알터랙 계곡"]=true,   ["폭풍의 눈"]=true,
 }
+
 local function IsBattleground(zone)
     if not zone or zone == "" then return false end
     return BATTLEGROUNDS[zone] == true
@@ -221,6 +232,135 @@ local function GG_Send(msg, whisperTo)
         end
     else
         GG_Print(msg)
+    end
+end
+
+-- 아이템 출처 영문 → 한글
+local BIS_SRC_KO = {
+    ["Tailoring"]                = "재봉",
+    ["Jewelcrafting"]            = "보석세공",
+    ["Leatherworking"]           = "가죽세공",
+    ["Blacksmithing"]            = "대장",
+    ["Engineering"]              = "기공",
+    ["Enchanting"]               = "마부",
+    ["Alchemy"]                  = "연금",
+    ["25 ×Badge of Justice"]     = "정의의 휘장 25개",
+    ["Badge of Justice"]         = "정의의 휘장",
+    ["35 ×Badge of Justice"]     = "정의의 휘장 35개",
+    ["45 ×Badge of Justice"]     = "정의의 휘장 45개",
+    ["Honor Points"]             = "명예 점수",
+    ["Arena Points"]             = "투기장 점수",
+    ["World Drop"]               = "월드 드랍",
+}
+
+-- !비스 슬롯 조회용 한글 키워드 → BisSlotData 슬롯 키
+local BIS_SLOT_KO = {
+    ["머리"]={"머리"}, ["목"]={"목"}, ["목걸이"]={"목"},
+    ["어깨"]={"어깨"},
+    ["등"]={"등"}, ["망토"]={"등"},
+    ["가슴"]={"가슴"},
+    ["손목"]={"손목"}, ["팔찌"]={"손목"},
+    ["장갑"]={"장갑"}, ["손"]={"장갑"},
+    ["허리"]={"허리"}, ["벨트"]={"허리"},
+    ["다리"]={"다리"},
+    ["발"]={"발"}, ["신발"]={"발"},
+    ["반지1"]={"반지1"}, ["반지2"]={"반지2"},
+    ["반지"]={"반지1","반지2"},
+    ["장신구1"]={"장신구1"}, ["장신구2"]={"장신구2"},
+    ["장신구"]={"장신구1","장신구2"},
+    ["주장비"]={"주장비"}, ["무기"]={"주장비"},
+    ["보조장비"]={"보조장비"}, ["방패"]={"보조장비"},
+    ["원거리"]={"원거리"}, ["활"]={"원거리"}, ["총"]={"원거리"},
+}
+
+local function HandleBisSlotQuery(cls, specHint, slotKeys, whisperTo)
+    if not MyGreeting_BisSlotData then
+        GG_Send("[비스] BisData 없음 (BisData.lua 확인)", whisperTo)
+        return
+    end
+    local clsData = MyGreeting_BisSlotData[cls]
+    if not clsData then
+        GG_Send("[비스] " .. cls .. " 직업 데이터 없음", whisperTo)
+        return
+    end
+
+    local specs = {}
+    if specHint and clsData[specHint] then
+        specs = {specHint}
+    else
+        for sp in pairs(clsData) do specs[#specs+1] = sp end
+        table.sort(specs)
+    end
+
+    -- 전 스펙 아이템을 페이즈별로 묶어서 수집 (중복 ID 제거, 아이템명은 발송 시점에 조회)
+    local byPhase = {}
+    local seenId  = {}
+    for _, spec in ipairs(specs) do
+        local specData = clsData[spec]
+        for _, slotKey in ipairs(slotKeys) do
+            local entries = specData and specData[slotKey]
+            if entries then
+                for _, e in ipairs(entries) do
+                    if e.id and not seenId[e.id] then
+                        seenId[e.id] = true
+                        local n = tonumber(e.phase and e.phase:match("P(%d+)")) or 0
+                        if not byPhase[n] then
+                            byPhase[n] = {label = e.phase or ("P"..n), entries = {}}
+                        end
+                        byPhase[n].entries[#byPhase[n].entries+1] = e
+                        GetItemInfo(e.id)  -- 캐시 요청
+                    end
+                end
+            end
+        end
+    end
+
+    local phases = {}
+    for n in pairs(byPhase) do phases[#phases+1] = n end
+    table.sort(phases)
+
+    local wt = whisperTo
+    local slotLabel = slotKeys[1] or ""
+
+    -- 헤더 + 각 페이즈를 1초 간격으로 순차 발송
+    -- 발송 시점에 GetItemInfo 재호출 → 캐시 채워진 상태로 링크 획득
+    local function sendPhase(idx)
+        if idx == 0 then
+            -- 헤더
+            local msg = string.format("[비스] %s %s", cls, slotLabel)
+            if wt then SendChatMessage(msg, "WHISPER", nil, wt)
+            elseif not paused then SendChatMessage(msg, "GUILD") end
+            if #phases > 0 then
+                C_Timer.After(1.0, function() sendPhase(1) end)
+            end
+        elseif idx <= #phases then
+            local p = byPhase[phases[idx]]
+            local parts = {}
+            for _, e in ipairs(p.entries) do
+                local _, link = GetItemInfo(e.id)
+                local display = link or ("[" .. e.id .. "]")
+                local zone = e.zone or ""
+                local src = BIS_SRC_KO[zone] or zone
+                if src == "" then src = "월드 드랍" end
+                if e.boss and e.boss ~= "" then src = src .. "/" .. e.boss end
+                display = display .. "(" .. src .. ")"
+                parts[#parts+1] = display
+            end
+            local msg = p.label .. ": " .. table.concat(parts, ", ")
+            if wt then SendChatMessage(msg, "WHISPER", nil, wt)
+            elseif not paused then SendChatMessage(msg, "GUILD") end
+            if idx < #phases then
+                C_Timer.After(1.0, function() sendPhase(idx + 1) end)
+            end
+        end
+    end
+
+    if #phases == 0 then
+        local msg = "[비스] 해당 슬롯 데이터 없음"
+        if wt then SendChatMessage(msg, "WHISPER", nil, wt)
+        elseif not paused then SendChatMessage(msg, "GUILD") end
+    else
+        sendPhase(0)
     end
 end
 
@@ -1031,6 +1171,9 @@ local function ProcessRosterUpdate()
                     elseif daily.heroicZone == z2 then msgKey = "dungeon_daily_heroic"
                     end
                     GG_Print(MyGreeting_GetMsg(msgKey, {name=n2, zone=z2}))
+                    if MyGreeting_CheckBIS then
+                        MyGreeting_CheckBIS(n2, z2)
+                    end
                 end)
             end
             if zone ~= "" and not IsDungeon(zone) and not IsBattleground(zone) then
@@ -1416,6 +1559,24 @@ frame:SetScript("OnEvent", function(self, event, ...)
             RouteCommand(plainSub, sender)
         end
 
+        -- !비스 / !길드비스 직업 슬롯 조회
+        pcall(function()
+            local bisQ = trimmed:match("^!길드비스%s+(.+)$")
+            local toGuild = bisQ ~= nil
+            if not bisQ then bisQ = trimmed:match("^!비스%s+(.+)$") end
+            if not bisQ then return end
+            local cls, specHint, slotInput
+            cls, specHint, slotInput = bisQ:match("^(%S+)/(%S+)%s+(%S+)$")
+            if not slotInput then
+                cls, slotInput = bisQ:match("^(%S+)%s+(%S+)$")
+            end
+            if not cls or not slotInput then return end
+            local slotKeys = BIS_SLOT_KO[slotInput]
+            if not slotKeys then return end
+            local wt = not toGuild and sender or nil
+            HandleBisSlotQuery(cls, specHint, slotKeys, wt)
+        end)
+
         -- !던전 아이템 → 길챗 bis 등록 (기존 명령어 첫 단어 제외, !길드X 제외)
         if not guildSub then pcall(function()
             local bisD, bisI = trimmed:match("^!(%S+)%s+(.+)$")
@@ -1426,6 +1587,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 ["일일영던"]=true, ["주간전장"]=true, ["일던"]=true, ["영던"]=true, ["전장"]=true,
                 ["장비"]=true, ["장비현황"]=true, ["장비길드"]=true, ["장비전체"]=true,
                 ["정보"]=true, ["귓말"]=true, ["길드"]=true, ["장비보내기"]=true,
+                ["비스"]=true,
             }
             local isExcluded = BIS_EXCLUDED[bisD]
                 or CLASS_KEYWORDS["!" .. bisD]

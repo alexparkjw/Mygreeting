@@ -6,6 +6,8 @@
 ## SavedVariables: MyGreetingDB
 
 GuildDB.lua
+BisData.lua
+BisTracker.lua
 GuildGreeter.lua
 PartyGreeter.lua
 BuffGreeter.lua
