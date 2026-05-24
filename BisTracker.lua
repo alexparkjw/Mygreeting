@@ -101,6 +101,34 @@ local BOSS_NAME_KO = {
     -- 월드 보스
     ["Doomwalker"]                 = "파멸의 절단기",
     ["Doom-Lord Kazzak"]           = "파멸의 군주 카자크",
+    -- 카라잔 (보스 미지정 공용)
+    ["Karazhan"]                   = "카라잔",
+    ["Avatar of the Martyred"]     = "순교자의 화신",
+    -- 하이잘 (보스 미지정 공용)
+    ["Hyjal Summit"]               = "하이잘 정상",
+    -- 태양샘 (보스 미지정 공용)
+    ["Sunwell Plateau"]            = "태양샘 고원",
+    ["Reliquary of the Lost"]      = "사라진 유물",
+    -- 퀠다나스 섬 NPC
+    ["Chief Engineer Lorthander"]  = "수석 기술자 로르탄더",
+    ["Smith Hauthaa"]              = "대장장이 하우타",
+    -- 희귀 몬스터
+    ["Gezzarak the Huntress"]      = "사냥꾼 게자라크",
+    -- 배지/평판 교환
+    ["Badge of Justice"]           = "정의의 배지",
+    ["G'eras"]                     = "게라스",
+    ["Keepers of Time"]            = "시간의 수호자",
+    ["Cache of the Legion"]        = "군단의 보물함",
+    -- 제작
+    ["Jewelcrafting"]              = "보석세공 제작",
+    ["Leatherworking"]             = "가죽세공 제작",
+    ["Tailoring"]                  = "재봉 제작",
+    ["Deadly Fire Opal"]           = "보석세공 제작",
+    ["Delicate Crimson Spinel"]    = "보석세공 제작",
+    ["Glinting Fire Opal"]         = "보석세공 제작",
+    ["Relentless Earthstorm Diamond"] = "보석세공 제작",
+    ["Shifting Nightseye"]         = "보석세공 제작",
+    ["Wicked Pyrestone"]           = "보석세공 제작",
 }
 
 local function GetItemIDFromLink(link)
