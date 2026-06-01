@@ -342,6 +342,7 @@ partyFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "CHAT_MSG_PARTY" or event == "CHAT_MSG_PARTY_LEADER" or
            event == "CHAT_MSG_RAID"  or event == "CHAT_MSG_RAID_LEADER" then
         local msg, sender = ...
+        sender = sender and (sender:match("^([^%-]+)") or sender)
         local myName = UnitName("player")
         if sender == myName then return end
         if msg and msg:find("수고") then

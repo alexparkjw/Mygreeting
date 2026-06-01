@@ -14,7 +14,7 @@ TOKEN_URL = "https://kr.battle.net/oauth/token"
 API_BASE = "https://kr.api.blizzard.com"
 NAMESPACE_PROFILE = "profile-classicann-kr"
 REALM = "fengus-ferocity"
-GUILDS = ["moira"]
+GUILDS = []
 
 
 def get_token():

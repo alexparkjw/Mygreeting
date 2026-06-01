@@ -8,6 +8,10 @@ local GREET_DELAY     = 1
 local REJOIN_SKIP_SEC = 5 * 60
 local INIT_DELAY      = 3
 
+local DELAY_LOCAL   = 0
+local DELAY_WHISPER = 1.0
+local DELAY_GUILD   = 1.5
+
 -- ============================================================
 -- 클래식 던전 이름 목록 (한글/영문 둘 다)
 -- ============================================================
@@ -222,26 +226,60 @@ local function GG_Print(msg, onSent)
     end
 end
 
-local function GG_Send(msg, whisperTo)
-    if not msg or msg == "" then return end
-    if whisperTo and whisperTo ~= "LOCAL" and UnitIsAFK("player") then
-        msg = "<자리비움> " .. msg
-    end
-    if whisperTo == "LOCAL" then
-        DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r " .. msg)
-    elseif whisperTo then
-        local box = ChatFrame1EditBox
-        if box and box:IsVisible() then
-            C_Timer.After(2, function()
-                SendChatMessage(msg, "WHISPER", nil, whisperTo)
-            end)
-        else
-            SendChatMessage(msg, "WHISPER", nil, whisperTo)
-        end
-    else
-        GG_Print(msg)
+local _queues = {
+    LOCAL   = {queue = {}, running = false, delay = DELAY_LOCAL},
+    WHISPER = {queue = {}, running = false, delay = DELAY_WHISPER},
+    GUILD   = {queue = {}, running = false, delay = DELAY_GUILD},
+}
+
+local function _QueueKey(whisperTo)
+    if whisperTo == "LOCAL" then return "LOCAL"
+    elseif whisperTo then return "WHISPER"
+    else return "GUILD"
     end
 end
+
+local function _QueueFlush(key)
+    local q = _queues[key]
+    if #q.queue == 0 then q.running = false; return end
+    local e = table.remove(q.queue, 1)
+    local function doSend()
+        if e.whisperTo == "LOCAL" then
+            DEFAULT_CHAT_FRAME:AddMessage("|cff40FF40[myGreeting]|r " .. e.msg)
+        elseif e.whisperTo then
+            SendChatMessage(e.msg, "WHISPER", nil, e.whisperTo)
+        elseif not paused then
+            SendChatMessage(e.msg, "GUILD")
+        end
+        if q.delay == 0 then
+            _QueueFlush(key)
+        else
+            C_Timer.After(q.delay, function() _QueueFlush(key) end)
+        end
+    end
+    local box = ChatFrame1EditBox
+    if e.whisperTo ~= "LOCAL" and box and box:IsVisible() then
+        C_Timer.After(2, doSend)
+    else
+        doSend()
+    end
+end
+
+local function GG_Send(msg, whisperTo)
+    if not msg or msg == "" then return end
+    if whisperTo ~= "LOCAL" and UnitIsAFK("player") then
+        msg = "<자리비움> " .. msg
+    end
+    local key = _QueueKey(whisperTo)
+    local q = _queues[key]
+    q.queue[#q.queue+1] = {msg = msg, whisperTo = whisperTo}
+    if not q.running then
+        q.running = true
+        _QueueFlush(key)
+    end
+end
+
+MyGreeting_QSend = GG_Send
 
 -- 아이템 출처 영문 → 한글
 local BIS_SRC_KO = {
@@ -327,48 +365,27 @@ local function HandleBisSlotQuery(cls, specHint, slotKeys, whisperTo)
     for n in pairs(byPhase) do phases[#phases+1] = n end
     table.sort(phases)
 
-    local wt = whisperTo
     local slotLabel = slotKeys[1] or ""
 
-    -- 헤더 + 각 페이즈를 1초 간격으로 순차 발송
-    -- 발송 시점에 GetItemInfo 재호출 → 캐시 채워진 상태로 링크 획득
-    local function sendPhase(idx)
-        if idx == 0 then
-            -- 헤더
-            local msg = string.format("[비스] %s %s", cls, slotLabel)
-            if wt then SendChatMessage(msg, "WHISPER", nil, wt)
-            elseif not paused then SendChatMessage(msg, "GUILD") end
-            if #phases > 0 then
-                C_Timer.After(1.0, function() sendPhase(1) end)
-            end
-        elseif idx <= #phases then
-            local p = byPhase[phases[idx]]
-            local parts = {}
-            for _, e in ipairs(p.entries) do
-                local _, link = GetItemInfo(e.id)
-                local display = link or ("[" .. e.id .. "]")
-                local zone = e.zone or ""
-                local src = BIS_SRC_KO[zone] or zone
-                if src == "" then src = "월드 드랍" end
-                if e.boss and e.boss ~= "" then src = src .. "/" .. e.boss end
-                display = display .. "(" .. src .. ")"
-                parts[#parts+1] = display
-            end
-            local msg = p.label .. ": " .. table.concat(parts, ", ")
-            if wt then SendChatMessage(msg, "WHISPER", nil, wt)
-            elseif not paused then SendChatMessage(msg, "GUILD") end
-            if idx < #phases then
-                C_Timer.After(1.0, function() sendPhase(idx + 1) end)
-            end
-        end
+    if #phases == 0 then
+        GG_Send("[비스] 해당 슬롯 데이터 없음", whisperTo)
+        return
     end
 
-    if #phases == 0 then
-        local msg = "[비스] 해당 슬롯 데이터 없음"
-        if wt then SendChatMessage(msg, "WHISPER", nil, wt)
-        elseif not paused then SendChatMessage(msg, "GUILD") end
-    else
-        sendPhase(0)
+    GG_Send(string.format("[비스] %s %s", cls, slotLabel), whisperTo)
+    for _, phaseIdx in ipairs(phases) do
+        local p = byPhase[phaseIdx]
+        local parts = {}
+        for _, e in ipairs(p.entries) do
+            local _, link = GetItemInfo(e.id)
+            local display = link or ("[" .. e.id .. "]")
+            local zone = e.zone or ""
+            local src = BIS_SRC_KO[zone] or zone
+            if src == "" then src = "월드 드랍" end
+            if e.boss and e.boss ~= "" then src = src .. "/" .. e.boss end
+            parts[#parts+1] = display .. "(" .. src .. ")"
+        end
+        GG_Send(p.label .. ": " .. table.concat(parts, ", "), whisperTo)
     end
 end
 
@@ -854,7 +871,7 @@ local function HandleGuildCommand(cmd, whisperTo)
         GG_Send("!일일  !일던  !영던  !전장", whisperTo)
         GG_Send("── 기타 명령어 ──────────────────", whisperTo)
         GG_Send("!길드[명령어]  — 길드챗으로 출력  예) !길드현황", whisperTo)
-        GG_Send("![던전] [아이템]  — 비스 등록  예) !성루 어깨", whisperTo)
+        GG_Send("!비스 [직업] [슬롯]  — 슬롯별 BIS 조회  예) !비스 전사 머리", whisperTo)
         GG_Send("!도움 직업 / 종족 / 전문기술 / 일정  — 상세 보기", whisperTo)
     elseif cmd == "help_class" then
         GG_Send("직업별 멤버목록: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드 !죽기", whisperTo)
@@ -964,14 +981,10 @@ local function HandleGuildCommand(cmd, whisperTo)
             if #zoneNames == 0 then
                 GG_Send("접속중인 길드원 없음", whisperTo)
             else
-                local delay = 0
                 for _, zone in ipairs(zoneNames) do
                     local members = zones[zone]
                     table.sort(members)
-                    local line = zone .. "(" .. #members .. "명): " .. table.concat(members, ", ")
-                    local d, wt = delay, whisperTo
-                    C_Timer.After(d, function() GG_Send(line, wt) end)
-                    delay = delay + 0.6
+                    GG_Send(zone .. "(" .. #members .. "명): " .. table.concat(members, ", "), whisperTo)
                 end
             end
         end)
@@ -1029,6 +1042,91 @@ local function HandleGuildCommand(cmd, whisperTo)
             GG_Print("활성 추적 없음")
         end
     end
+end
+
+-- ============================================================
+-- 공통 명령어 디스패처
+-- sub: 명령어, whisperTo: "LOCAL"/이름/nil(길드챗), senderName: 기본 대상 이름
+-- 반환: 처리됐으면 true, 아니면 false
+-- ============================================================
+local DAILY_GET = {
+    ["일던"] = "dailyNormal",
+    ["영던"] = "dailyHeroic",
+    ["전장"] = "weeklyBG",
+}
+
+local CMD_MAP = {
+    ["현황"]="status", ["레벨"]="levels", ["직업"]="classes",
+    ["종족"]="races",  ["인던"]="dungeon", ["지역"]="zones",
+    ["전문기술"]="profs", ["등급"]="ranks",
+    ["도움"]="help", ["도움 직업"]="help_class",
+    ["도움 종족"]="help_race", ["도움 전문기술"]="help_prof",
+    ["도움 장비"]="help_gear", ["도움 일정"]="help_daily",
+}
+
+local function DispatchCommand(sub, whisperTo, senderName)
+    if CMD_MAP[sub] then
+        HandleGuildCommand(CMD_MAP[sub], whisperTo)
+    elseif sub == "일일" then
+        HandleDailyAll(whisperTo)
+    elseif DAILY_GET[sub] then
+        HandleDailyQuery(DAILY_GET[sub], whisperTo)
+    elseif CLASS_KEYWORDS["!" .. sub] then
+        HandleGuildClassList(CLASS_KEYWORDS["!" .. sub], whisperTo)
+    elseif RACE_KEYWORDS["!" .. sub] then
+        HandleGuildRaceList(RACE_KEYWORDS["!" .. sub], whisperTo)
+    elseif PROF_CMD_KEYWORDS["!" .. sub] then
+        HandleGuildProfList(PROF_CMD_KEYWORDS["!" .. sub], whisperTo)
+    elseif sub == "장비" then
+        if MyGreeting_GetGearScore then MyGreeting_GetGearScore(senderName, whisperTo) end
+    elseif sub == "장비현황" or sub == "수집" then
+        if MyGreeting_GearStatus then MyGreeting_GearStatus(whisperTo) end
+    elseif sub == "장비길드" then
+        if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(whisperTo, true) end
+    elseif sub == "장비전체" then
+        if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(whisperTo, false) end
+    else
+        local guildFrom = sub:match("^장비길드 (%d+)$")
+        local allFrom   = sub:match("^장비전체 (%d+)$")
+        local gearT     = sub:match("^장비 (.+)$")
+        local classGear = sub:match("^장비(.+)$")
+        local classFile = classGear and CLASS_KEYWORDS["!" .. classGear]
+        local bisQ      = sub:match("^비스%s+(.+)$")
+        if guildFrom then
+            if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(whisperTo, true, tonumber(guildFrom)) end
+        elseif allFrom then
+            if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(whisperTo, false, tonumber(allFrom)) end
+        elseif classFile then
+            if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(whisperTo, false, nil, classFile, classGear) end
+        elseif gearT then
+            if MyGreeting_GetGearScore then MyGreeting_GetGearScore(strtrim(gearT), whisperTo) end
+        elseif bisQ then
+            local cls, specHint, slotInput
+            cls, specHint, slotInput = bisQ:match("^(%S+)/(%S+)%s+(%S+)$")
+            if not slotInput then cls, slotInput = bisQ:match("^(%S+)%s+(%S+)$") end
+            local slotKeys = slotInput and BIS_SLOT_KO[slotInput]
+            if cls and slotKeys then HandleBisSlotQuery(cls, specHint, slotKeys, whisperTo) end
+        else
+            local slotCmd, slotTarget = sub:match("^(%S+)%s+(.+)$")
+            if not slotCmd then slotCmd = sub end
+            local slotIds = GEAR_SLOT_CMDS[slotCmd]
+            if slotIds then
+                local targetName = (slotTarget and strtrim(slotTarget) ~= "") and strtrim(slotTarget) or senderName
+                if MyGreeting_GetGearSlot then MyGreeting_GetGearSlot(targetName, slotIds, whisperTo) end
+            else
+                local infoT = sub:match("^정보%s+(.+)$")
+                local rankT = sub:match("^등급%s+(.+)$")
+                if infoT then
+                    HandleGuildCharInfo(infoT, whisperTo)
+                elseif rankT then
+                    HandleGuildCommand("rank:" .. strtrim(rankT), whisperTo)
+                else
+                    return false
+                end
+            end
+        end
+    end
+    return true
 end
 
 -- ============================================================
@@ -1253,22 +1351,6 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if not MyGreetingDB.dailyInfo then MyGreetingDB.dailyInfo = {} end
         if not MyGreetingDB.dungeonGreeted then MyGreetingDB.dungeonGreeted = {} end
         if not MyGreetingDB.bgGreeted then MyGreetingDB.bgGreeted = {} end
-        if not MyGreetingDB.bisItems then MyGreetingDB.bisItems = {} end
-        pcall(function()
-            local pName = UnitName("player")
-            pName = pName and (pName:match("^([^%-]+)") or pName)
-            if not pName then return end
-            local oldFlat = {}
-            for k, v in pairs(MyGreetingDB.bisItems) do
-                if type(v) == "string" then oldFlat[k] = v end
-            end
-            if not next(oldFlat) then return end
-            if not MyGreetingDB.bisItems[pName] then MyGreetingDB.bisItems[pName] = {} end
-            for k, v in pairs(oldFlat) do
-                MyGreetingDB.bisItems[pName][k] = v
-                MyGreetingDB.bisItems[k] = nil
-            end
-        end)
         db = MyGreetingDB
         dungeonGreeted = db.dungeonGreeted
         bgGreeted      = db.bgGreeted
@@ -1457,155 +1539,13 @@ frame:SetScript("OnEvent", function(self, event, ...)
             end
         end
 
-        local DAILY_SET = {
-            ["일일일던"] = "dailyNormal",
-            ["일일영던"] = "dailyHeroic",
-            ["주간전장"] = "weeklyBG",
-        }
-        local DAILY_GET = {
-            ["일던"] = "dailyNormal",
-            ["영던"] = "dailyHeroic",
-            ["전장"] = "weeklyBG",
-        }
-
-        local function RouteCommand(sub, wt)
-            local CMD_MAP = {
-                ["현황"]="status", ["레벨"]="levels", ["직업"]="classes",
-                ["종족"]="races",  ["인던"]="dungeon", ["지역"]="zones",
-                ["전문기술"]="profs", ["등급"]="ranks",
-                ["도움"]="help", ["도움 직업"]="help_class",
-                ["도움 종족"]="help_race", ["도움 전문기술"]="help_prof", ["도움 일정"]="help_daily", ["도움 장비"]="help_gear",
-            }
-            local setKey, setValue = sub:match("^(%S+)%s+(.+)$")
-
-            if CMD_MAP[sub] then
-                HandleGuildCommand(CMD_MAP[sub], wt)
-            elseif DAILY_SET[sub] then
-                -- "!일일영던" 값 없이 → 리셋
-                if wt ~= "LOCAL" and db then
-                    db.dailyInfo[DAILY_SET[sub]] = nil
-                    DEFAULT_CHAT_FRAME:AddMessage(
-                        "|cff40FF40[myGreeting]|r " .. DAILY_LABEL[DAILY_SET[sub]] .. " 초기화됨")
-                end
-            elseif setKey and DAILY_SET[setKey] then
-                -- "!일일영던 마나 무덤" → 저장 (로컬 /mg 제외)
-                if wt ~= "LOCAL" and db then
-                    local dbKey = DAILY_SET[setKey]
-                    local t = date("*t")
-                    local daysSinceMon = (t.wday - 2) % 7
-                    local monDate = date("%Y-%m-%d", time() - daysSinceMon * 86400)
-                    db.dailyInfo[dbKey] = {
-                        value     = strtrim(setValue),
-                        date      = date("%Y-%m-%d"),
-                        weekStart = monDate,
-                        setter    = sender,
-                    }
-                    DEFAULT_CHAT_FRAME:AddMessage(
-                        "|cff40FF40[myGreeting]|r " .. DAILY_LABEL[DAILY_SET[setKey]] ..
-                        " 등록: " .. strtrim(setValue) .. " (설정자: " .. sender .. ")")
-                end
-            elseif sub == "일일" then
-                HandleDailyAll(wt)
-            elseif DAILY_GET[sub] then
-                HandleDailyQuery(DAILY_GET[sub], wt)
-            elseif CLASS_KEYWORDS["!" .. sub] then
-                HandleGuildClassList(CLASS_KEYWORDS["!" .. sub], wt)
-            elseif RACE_KEYWORDS["!" .. sub] then
-                HandleGuildRaceList(RACE_KEYWORDS["!" .. sub], wt)
-            elseif PROF_CMD_KEYWORDS["!" .. sub] then
-                HandleGuildProfList(PROF_CMD_KEYWORDS["!" .. sub], wt)
-            elseif sub == "장비" then
-                if MyGreeting_GetGearScore then MyGreeting_GetGearScore(sender, wt) end
-            elseif sub == "장비현황" then
-                if MyGreeting_GearStatus then MyGreeting_GearStatus(wt) end
-            elseif sub == "장비길드" then
-                if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, true) end
-            elseif sub == "장비전체" then
-                if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank(wt, false) end
-            else
-                local guildFrom = sub:match("^장비길드 (%d+)$")
-                local allFrom   = sub:match("^장비전체 (%d+)$")
-                local gearT     = sub:match("^장비 (.+)$")
-                local classGear = sub:match("^장비(.+)$")
-                local classFile = classGear and CLASS_KEYWORDS["!" .. classGear]
-                if guildFrom and MyGreeting_PrintGearRank then
-                    MyGreeting_PrintGearRank(wt, true, tonumber(guildFrom))
-                elseif allFrom and MyGreeting_PrintGearRank then
-                    MyGreeting_PrintGearRank(wt, false, tonumber(allFrom))
-                elseif classFile and MyGreeting_PrintGearRank then
-                    MyGreeting_PrintGearRank(wt, false, nil, classFile, classGear)
-                elseif gearT then
-                    if MyGreeting_GetGearScore then MyGreeting_GetGearScore(strtrim(gearT), wt) end
-                else
-                    -- 슬롯 조회: "!머리", "!머리 이름"
-                    local slotCmd, slotTarget = sub:match("^(%S+)%s+(.+)$")
-                    if not slotCmd then slotCmd = sub end
-                    local slotIds = GEAR_SLOT_CMDS[slotCmd]
-                    if slotIds then
-                        local targetName = (slotTarget and strtrim(slotTarget) ~= "") and strtrim(slotTarget) or sender
-                        if MyGreeting_GetGearSlot then MyGreeting_GetGearSlot(targetName, slotIds, wt) end
-                    else
-                        local infoT = sub:match("^정보%s+(.+)$")
-                        if infoT then HandleGuildCharInfo(infoT, wt) end
-                        local rankT = sub:match("^등급%s+(.+)$")
-                        if rankT then HandleGuildCommand("rank:" .. strtrim(rankT), wt) end
-                    end
-                end
-            end
-        end
-
         -- !길드X → 길드챗으로 출력
         local guildSub = trimmed:match("^!길드(.+)$")
-        if guildSub then
-            RouteCommand(guildSub, nil)
-        end
+        if guildSub then DispatchCommand(guildSub, nil, sender) end
 
-        -- !X → 친 사람 귓말로 출력 (기본)
+        -- !X → 친 사람 귓말로 출력
         local plainSub = trimmed:match("^!(.+)$")
-        if plainSub and not guildSub then
-            RouteCommand(plainSub, sender)
-        end
-
-        -- !비스 / !길드비스 직업 슬롯 조회
-        pcall(function()
-            local bisQ = trimmed:match("^!길드비스%s+(.+)$")
-            local toGuild = bisQ ~= nil
-            if not bisQ then bisQ = trimmed:match("^!비스%s+(.+)$") end
-            if not bisQ then return end
-            local cls, specHint, slotInput
-            cls, specHint, slotInput = bisQ:match("^(%S+)/(%S+)%s+(%S+)$")
-            if not slotInput then
-                cls, slotInput = bisQ:match("^(%S+)%s+(%S+)$")
-            end
-            if not cls or not slotInput then return end
-            local slotKeys = BIS_SLOT_KO[slotInput]
-            if not slotKeys then return end
-            local wt = not toGuild and sender or nil
-            HandleBisSlotQuery(cls, specHint, slotKeys, wt)
-        end)
-
-        -- !던전 아이템 → 길챗 bis 등록 (기존 명령어 첫 단어 제외, !길드X 제외)
-        if not guildSub then pcall(function()
-            local bisD, bisI = trimmed:match("^!(%S+)%s+(.+)$")
-            if not bisD or not bisI or not db or not db.bisItems then return end
-            local BIS_EXCLUDED = {
-                ["현황"]=true, ["레벨"]=true, ["직업"]=true, ["종족"]=true, ["인던"]=true, ["지역"]=true,
-                ["전문기술"]=true, ["등급"]=true, ["도움"]=true, ["일일"]=true, ["일일일던"]=true,
-                ["일일영던"]=true, ["주간전장"]=true, ["일던"]=true, ["영던"]=true, ["전장"]=true,
-                ["장비"]=true, ["장비현황"]=true, ["장비길드"]=true, ["장비전체"]=true,
-                ["정보"]=true, ["귓말"]=true, ["길드"]=true, ["장비보내기"]=true,
-                ["비스"]=true,
-            }
-            local isExcluded = BIS_EXCLUDED[bisD]
-                or CLASS_KEYWORDS["!" .. bisD]
-                or RACE_KEYWORDS["!" .. bisD]
-                or PROF_CMD_KEYWORDS["!" .. bisD]
-                or GEAR_SLOT_CMDS[bisD]
-            if isExcluded then return end
-            if not db.bisItems[sender] then db.bisItems[sender] = {} end
-            db.bisItems[sender][bisD] = strtrim(bisI)
-            SendChatMessage("[비스] " .. bisD .. " → " .. strtrim(bisI) .. " 등록!", "WHISPER", nil, sender)
-        end) end
+        if plainSub and not guildSub then DispatchCommand(plainSub, sender, sender) end
 
         if sender == myName then return end
 
@@ -1670,15 +1610,12 @@ SlashCmdList["MYGREETING"] = function(msg)
         GG_Send("/mg 등급 [등급명] / 정보 [이름]", L)
         GG_Send("─── 장비 ───", L)
         GG_Send("/mg 장비현황(수집) / 장비 [이름] / 장비길드 / 장비전체 / 장비[직업명]", L)
-        GG_Send("/mg 장비초기화 / 장비디버그온 / 장비디버그오프", L)
+        GG_Send("/mg 장비초기화", L)
 
         GG_Send("─── 길드챗 (!도움 으로 상세 확인) ───", L)
         GG_Send("!현황 / !레벨 / !직업 / !종족 / !지역 / !인던 / !전문기술 / !등급", L)
         GG_Send("!정보 [이름] / !장비 [이름] / !장비길드 / !장비전체", L)
         GG_Send("!머리/목/어깨/등/가슴/벨트/다리/발/손목/손/손가락/장신구/주장비/보조장비/원거리 [이름]", L)
-        GG_Send("─── 비스 ───", L)
-        GG_Send("/엠지 [던전] [아이템] — 내 비스 등록  /엠지 비스 — 전체 목록", L)
-        GG_Send("길챗: ![던전] [아이템] — 개인 비스 등록 (귓말 확인)", L)
         GG_Send("─── 기타 ───", L)
         GG_Send("/mg 중지 — 자동 인사 일시중지  /mg 시작 — 재개", L)
         GG_Send("/mg reset / remove [이름] / status / db", L)
@@ -1725,19 +1662,6 @@ SlashCmdList["MYGREETING"] = function(msg)
             name = name and (name:match("^([^%-]+)") or name)
         end
         if name and MyGreeting_GetGearScore then MyGreeting_GetGearScore(name, "LOCAL") end
-
-    elseif msg == "장비현황" or msg == "수집" then
-        if MyGreeting_GearStatus then MyGreeting_GearStatus("LOCAL") end
-
-    elseif msg == "장비길드" then
-        if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", true) end
-    elseif msg:match("^장비길드 (%d+)$") then
-        if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", true, tonumber(msg:match("^장비길드 (%d+)$"))) end
-
-    elseif msg == "장비전체" then
-        if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", false) end
-    elseif msg:match("^장비전체 (%d+)$") then
-        if MyGreeting_PrintGearRank then MyGreeting_PrintGearRank("LOCAL", false, tonumber(msg:match("^장비전체 (%d+)$"))) end
 
     elseif msg:match("^타겟 (.+) (%d+)$") then
         local targetName, markIdx = msg:match("^타겟 (.+) (%d+)$")
@@ -1798,33 +1722,6 @@ SlashCmdList["MYGREETING"] = function(msg)
         if MyGreetingDB then MyGreetingDB.gearData = {} end
         GG_Send("장비 데이터 초기화 완료", "LOCAL")
 
-    elseif msg == "장비디버그" then
-        if MyGreeting_GearDebug then MyGreeting_GearDebug() end
-
-    elseif msg == "장비디버그온" then
-        MyGreeting_GearDebugMode(true)
-        GG_Send("장비 디버그 모드 켜짐 — 타겟 바꿀 때마다 로그 출력", "LOCAL")
-
-    elseif msg == "장비디버그오프" then
-        MyGreeting_GearDebugMode(false)
-        GG_Send("장비 디버그 모드 꺼짐", "LOCAL")
-
-    elseif msg:find("^장비 ") then
-        local target = strtrim(msg:sub(#"장비 " + 1))
-        if target ~= "" and MyGreeting_GetGearScore then
-            MyGreeting_GetGearScore(target, "LOCAL")
-        end
-
-    elseif (function()
-        local s = msg:match("^장비(.+)$")
-        return s and CLASS_KEYWORDS and CLASS_KEYWORDS["!" .. s]
-    end)() then
-        local className = msg:match("^장비(.+)$")
-        local classFile = CLASS_KEYWORDS["!" .. className]
-        if MyGreeting_PrintGearRank then
-            MyGreeting_PrintGearRank("LOCAL", false, nil, classFile, className)
-        end
-
     elseif lower == "db" then
         if MyGreeting_PrintAltDB then MyGreeting_PrintAltDB() end
 
@@ -1839,80 +1736,11 @@ SlashCmdList["MYGREETING"] = function(msg)
         InterfaceOptionsFrame_OpenToCategory("myGreeting")
 
     else
-        local CMD_MAP = {
-            ["현황"]="status", ["레벨"]="levels", ["직업"]="classes",
-            ["종족"]="races",  ["인던"]="dungeon", ["지역"]="zones",
-            ["전문기술"]="profs", ["등급"]="ranks",
-            ["도움"]="help", ["도움 직업"]="help_class",
-            ["도움 종족"]="help_race", ["도움 전문기술"]="help_prof", ["도움 장비"]="help_gear",
-        }
-        local mapped = CMD_MAP[msg]
-        local SL_DAILY_GET = { ["일던"]="dailyNormal", ["영던"]="dailyHeroic", ["전장"]="weeklyBG" }
-        if mapped then
-            HandleGuildCommand(mapped, "LOCAL")
-        elseif msg == "일일" then
-            HandleDailyAll("LOCAL")
-        elseif SL_DAILY_GET[msg] then
-            HandleDailyQuery(SL_DAILY_GET[msg], "LOCAL")
-        elseif CLASS_KEYWORDS["!" .. msg] then
-            HandleGuildClassList(CLASS_KEYWORDS["!" .. msg], "LOCAL")
-        elseif RACE_KEYWORDS["!" .. msg] then
-            HandleGuildRaceList(RACE_KEYWORDS["!" .. msg], "LOCAL")
-        elseif PROF_CMD_KEYWORDS["!" .. msg] then
-            HandleGuildProfList(PROF_CMD_KEYWORDS["!" .. msg], "LOCAL")
-        elseif lower == "비스" then
-            if not db.bisItems then db.bisItems = {} end
-            local myChar2 = myName or UnitName("player")
-            myChar2 = myChar2 and (myChar2:match("^([^%-]+)") or myChar2)
-            local myData = myChar2 and db.bisItems[myChar2]
-            if myData and next(myData) then
-                for dungeon, item in pairs(myData) do
-                    GG_Send("[비스] " .. dungeon .. " → " .. item, "LOCAL")
-                end
-            else
-                GG_Send("[비스] 등록된 아이템 없음", "LOCAL")
-            end
-        else
-            local slotCmd, slotTarget = msg:match("^(%S+)%s+(.+)$")
-            if not slotCmd then slotCmd = msg end
-            local slotIds = GEAR_SLOT_CMDS[slotCmd]
-            if slotIds then
-                local myName = UnitName("player")
-                myName = myName and (myName:match("^([^%-]+)") or myName)
-                local targetName = (slotTarget and strtrim(slotTarget) ~= "") and strtrim(slotTarget) or myName
-                if MyGreeting_GetGearSlot then MyGreeting_GetGearSlot(targetName, slotIds, "LOCAL") end
-            else
-                local infoT = msg:match("^정보%s+(.+)$")
-                if infoT then
-                    HandleGuildCharInfo(infoT, "LOCAL")
-                else
-                    local rankT = msg:match("^등급%s+(.+)$")
-                    if rankT then
-                        HandleGuildCommand("rank:" .. strtrim(rankT), "LOCAL")
-                    elseif slotTarget then
-                        -- BIS 등록: /엠지 [던전] [아이템]
-                        if not db.bisItems then db.bisItems = {} end
-                        local myChar2 = myName or UnitName("player")
-                        myChar2 = myChar2 and (myChar2:match("^([^%-]+)") or myChar2)
-                        if myChar2 then
-                            if not db.bisItems[myChar2] then db.bisItems[myChar2] = {} end
-                            db.bisItems[myChar2][slotCmd] = strtrim(slotTarget)
-                            GG_Send("[비스] " .. slotCmd .. " → " .. strtrim(slotTarget) .. " 등록!", "LOCAL")
-                        end
-                    else
-                        -- BIS 조회: /엠지 [던전]
-                        if not db.bisItems then db.bisItems = {} end
-                        local myChar2 = myName or UnitName("player")
-                        myChar2 = myChar2 and (myChar2:match("^([^%-]+)") or myChar2)
-                        local found = myChar2 and db.bisItems[myChar2] and db.bisItems[myChar2][msg]
-                        if found then
-                            GG_Send("[비스] " .. msg .. " → " .. found, "LOCAL")
-                        else
-                            GG_Send("알 수 없는 명령어. /mg help", "LOCAL")
-                        end
-                    end
-                end
-            end
+        local playerName = myName or UnitName("player")
+        playerName = playerName and (playerName:match("^([^%-]+)") or playerName)
+        local handled = DispatchCommand(msg, "LOCAL", playerName)
+        if not handled then
+            GG_Send("알 수 없는 명령어. /mg help", "LOCAL")
         end
     end
 end

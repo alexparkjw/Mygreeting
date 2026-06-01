@@ -84,7 +84,7 @@ if ConfirmSummon then
         return _orig(...)
     end
 end
-local preTradeBag       = {}
+local preTradeBag       = nil
 local preLootBag        = {}
 local recentTableMage    = nil  -- {name, time}
 local tablePreBag        = nil  -- 식탁 시전 시점 가방 스냅샷
@@ -395,6 +395,9 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
 
     -- ── 거래 완료 후 아이템 감지 ──────────────────────────────
     elseif event == "TRADE_CLOSED" then
+        local snap = preTradeBag
+        preTradeBag = nil
+        if not snap then return end
         C_Timer.After(0.3, function()
             local afterBag = SnapshotBag()
             -- 친근한 이름 중복 제거용 (사탕, 물빵 등 같은 카테고리는 한 번만)
@@ -402,7 +405,7 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
             local seen = {}
 
             for itemID, count in pairs(afterBag) do
-                local before = preTradeBag[itemID] or 0
+                local before = snap[itemID] or 0
                 if count > before then
                     local label = TRADE_FRIENDLY_NAME[itemID]
                     if not label then
@@ -416,11 +419,25 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
             end
 
             if #receivedNames > 0 then
-                local msg = table.concat(receivedNames, ", ") .. " 감사합니다"
+                local CHAT_LIMIT = 255
+                local parts = {}
+                for _, name in ipairs(receivedNames) do
+                    table.insert(parts, name)
+                    local testMsg = table.concat(parts, ", ") .. " 감사합니다"
+                    if #testMsg > CHAT_LIMIT then
+                        table.remove(parts)
+                        break
+                    end
+                end
+                local msg
+                if #parts == 0 then
+                    msg = "감사합니다"
+                else
+                    msg = table.concat(parts, ", ") .. " 감사합니다"
+                end
                 local channel = IsInParty() and "PARTY" or "SAY"
                 C_Timer.After(0.5, function() SendChatMessage(msg, channel) end)
             end
-            preTradeBag = {}
         end)
     end
 
