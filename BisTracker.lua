@@ -12,7 +12,7 @@ local BOSS_NAME_KO = {
     ["Vazruden"]                   = "나잔 & 바즈루덴",
     -- 으스러진 손의 전당
     ["Warbringer O'mrogg"]         = "돌격대장 오므로그",
-    ["Warchief Kargath Bladefist"] = "대쪽장 카르가스 블레이드피스트",
+    ["Warchief Kargath Bladefist"] = "대족장 카르가스 블레이드피스트",
     -- 마나 무덤
     ["Pandemonius"]                = "팬더모니우스",
     ["Nexus-Prince Shaffar"]       = "연합왕자 샤파르",

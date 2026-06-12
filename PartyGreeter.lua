@@ -108,7 +108,7 @@ local function OnLeaveParty()
     if IsInRaid() then return end
     local stayedLong = myPartyJoinTime and (GetTime() - myPartyJoinTime) >= JOIN_THRESHOLD
     local base = MyGreeting_GetMsg("party_leave")
-    local msg  = stayedLong and ("먼저갈께요 " .. base) or base
+    local msg  = stayedLong and ("먼저 갈게요 " .. base) or base
     local remaining = GetCurrentPartyMembers()
     for name in pairs(remaining) do
         if not alreadyWhispered[name] then

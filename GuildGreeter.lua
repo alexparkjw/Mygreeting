@@ -20,7 +20,7 @@ local DUNGEONS = {
     ["성난불길 협곡"]=true,
     ["통곡의 동굴"]=true,
     ["죽음의 폐광"]=true,
-    ["그림자송곳니 생채"]=true,
+    ["그림자송곳니 성채"]=true,
     ["검은심연의 나락"]=true,
     ["스톰윈드 지하감옥"]=true,
     ["놈리건"]=true,
@@ -162,7 +162,7 @@ local paused      = false
 -- 메시지 기본값 & 조회 함수 (전역 — PartyGreeter/BuffGreeter 공유)
 -- ============================================================
 MyGreeting_DEFAULT_MESSAGES = {
-    morning        = "좋은아침 입니다",
+    morning        = "좋은 아침입니다",
     noon           = "식사들 하셨습니까? 맛점 하세요",
     welcome_new    = "{name} 님 어서오세요 환영합니다",
     welcome        = "{name} 님 어서오세요",
