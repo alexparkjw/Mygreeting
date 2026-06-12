@@ -16,9 +16,11 @@ import sys
 import time
 import requests
 from datetime import datetime
+from dotenv import load_dotenv
 
-CLIENT_ID = "YOUR_CLIENT_ID"
-CLIENT_SECRET = "YOUR_CLIENT_SECRET"
+load_dotenv()
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 TOKEN_URL = "https://kr.battle.net/oauth/token"
 API_BASE = "https://kr.api.blizzard.com"
 STATIC_NS = "static-classicann-kr"
