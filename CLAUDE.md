@@ -115,6 +115,14 @@ and not recentlyGreeted -- 7200초(2시간) 이내 같은 던전 인사 안 했�
 
 ---
 
+## Spy KOS 연동 (get_guild_equipment.py)
+
+`get_spy_kos_names()` — `_anniversary_/WTF/Account/WARCRAFTPLUS/SavedVariables/Spy.lua`를 읽어 KOS(살생부) 대상 캐릭명 추출:
+- `["kosData"]` 섹션 내 `name = "..."` 값을 regex로 수집
+- 중복 제거 후 set 반환
+- 길드 로스터 대상과 합쳐져서 동일 포맷으로 장비 조회
+- 출력 JSON에 `"source": "길드(…)"` or `"source": "Spy KOS"` 구분 필드 포함
+
 ## 수정 시 주의사항
 
 - **`dungeonGreeted`는 `db.dungeonGreeted`와 동일 참조** — `dungeonGreeted = {}` 로 재할당하면 DB 연결 끊김. 재할당 후 반드시 `dungeonGreeted = db.dungeonGreeted` 재연결.
