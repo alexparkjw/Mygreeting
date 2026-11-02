@@ -1,3 +1,5 @@
+local _, ns = ...  -- Compat.lua (beta 포팅)
+local GetSpellInfo = ns.GetSpellInfo
 -- ============================================================
 -- DruidHelper.lua
 -- 드루이드: 인간형 추적 자동 비활성화
@@ -33,9 +35,9 @@ f:SetScript("OnEvent", function(self)
         tf:SetScript("OnEvent", CancelHumanoidTracking)
     end
 
-    hooksecurefunc("TaxiFrame_OnShow", function()
+    if TaxiFrame_OnShow then hooksecurefunc("TaxiFrame_OnShow", function()
         if GetShapeshiftForm() > 0 then
             CancelShapeshiftForm()
         end
-    end)
+    end) end
 end)

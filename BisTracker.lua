@@ -1,3 +1,5 @@
+local _, ns = ...  -- Compat.lua (beta 포팅)
+local GetItemInfo, SendChatMessage = ns.GetItemInfo, ns.SendChatMessage
 -- ============================================================
 -- BisTracker.lua
 -- 길드원 던전/레이드 입장 시 BIS 미보유 아이템 길드 채팅 안내
@@ -41,7 +43,7 @@ local BOSS_NAME_KO = {
     -- 강제 노역소
     ["Mennu the Betrayer"]         = "배반자 멘누",
     ["Quagmirran"]                 = "쿠아그미란",
-    -- 지하수령
+    -- 지하수렁
     ["Hungarfen"]                  = "형가르펜",
     ["Ghaz'an"]                    = "가즈안",
     ["The Black Stalker"]          = "검은 추격자",

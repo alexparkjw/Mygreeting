@@ -1,3 +1,5 @@
+local _, ns = ...  -- Compat.lua (beta 포팅)
+local GetItemInfo, SendChatMessage = ns.GetItemInfo, ns.SendChatMessage
 -- ============================================================
 -- GearTracker.lua
 -- 길드원 장비점수 API 임포트 및 조회
@@ -253,7 +255,7 @@ end
 -- items의 link 필드를 GetItemInfo 결과로 교체한 뒤 callback() 호출
 local function CacheLinks(items, whisperTo, callback)
     if whisperTo == "LOCAL" then callback(); return end
-    local pending = 0
+    local pending = 0          -- 아직 정보가 안 온 아이템 "종류" 수 (같은 반지 2개 = 1)
     local idToItems = {}
 
     for _, item in ipairs(items) do
@@ -263,8 +265,10 @@ local function CacheLinks(items, whisperTo, callback)
             if link then
                 item.link = link
             else
-                pending = pending + 1
-                if not idToItems[id] then idToItems[id] = {} end
+                if not idToItems[id] then
+                    idToItems[id] = {}
+                    pending = pending + 1
+                end
                 idToItems[id][#idToItems[id] + 1] = item
             end
         end
@@ -275,7 +279,15 @@ local function CacheLinks(items, whisperTo, callback)
         return
     end
 
+    local done = false
     local frame = CreateFrame("Frame")
+    local function finish()
+        if done then return end
+        done = true
+        frame:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
+        frame:SetScript("OnEvent", nil)
+        callback()
+    end
     frame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
     frame:SetScript("OnEvent", function(self, event, itemId)
         itemId = tonumber(itemId)
@@ -285,12 +297,10 @@ local function CacheLinks(items, whisperTo, callback)
         for _, it in ipairs(idToItems[itemId]) do it.link = link end
         idToItems[itemId] = nil
         pending = pending - 1
-        if pending <= 0 then
-            self:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
-            self:SetScript("OnEvent", nil)
-            callback()
-        end
+        if pending <= 0 then finish() end
     end)
+    -- 서버가 끝내 정보를 안 주는 아이템이 있어도 3초 뒤엔 있는 것만으로 답장
+    C_Timer.After(3, finish)
 end
 
 local SLOT_GROUPS = {

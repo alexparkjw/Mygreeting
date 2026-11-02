@@ -1,3 +1,5 @@
+local _, ns = ...  -- Compat.lua (beta 포팅)
+local GetAddOnMetadata, GetItemInfo, SendChatMessage = ns.GetAddOnMetadata, ns.GetItemInfo, ns.SendChatMessage
 -- ============================================================
 -- GuildGreeter.lua
 -- 길드 커스텀 인사 시스템
@@ -25,23 +27,30 @@ local DUNGEONS = {
     ["스톰윈드 지하감옥"]=true,
     ["놈리건"]=true,
     ["가시덩굴 우리"]=true,
-    ["붉은심자군 수도원 - 묘지"]=true,
-    ["붉은심자군 수도원 - 도서관"]=true,
-    ["붉은심자군 수도원 - 무기고"]=true,
-    ["붉은심자군 수도원 - 예배당"]=true,
+    ["붉은십자군 수도원"]=true,  -- 클래식은 날개 구분 없이 이 이름으로 나올 수 있음
+    ["붉은십자군 수도원 - 묘지"]=true,
+    ["붉은십자군 수도원 - 도서관"]=true,
+    ["붉은십자군 수도원 - 무기고"]=true,
+    ["붉은십자군 수도원 - 예배당"]=true,
     ["가시덩굴 구릉"]=true,
-    ["울다란"]=true,
+    ["울다만"]=true,
     ["줄파락"]=true,
     ["마라우돈"]=true,
     ["아탈학카르 신전"]=true,
     ["검은바위 나락"]=true,
+    ["검은바위 첨탑"]=true,
     ["검은바위 첨탑 (하층)"]=true,
     ["검은바위 첨탑 (상층)"]=true,
+    ["혈투의 전장"]=true,
     ["혈투의 전장 (동쪽)"]=true,
     ["혈투의 전장 (서쪽)"]=true,
     ["혈투의 전장 (북쪽)"]=true,
-    ["스칼로만스"]=true,
+    ["스칼로맨스"]=true,
     ["스트라솔름"]=true,
+    -- ── beta 신규 ─────────────────────────────────────────────
+    ["영주의 전당"]=true,
+    ["로데론의 폐허"]=true,
+    ["발굴현장: 저습지"]=true,  -- 공백/콜론은 무시하고 비교 (ZoneKey)
     -- ── TBC ───────────────────────────────────────────────────
     ["지옥불 성루"]=true,
     ["피의 용광로"]=true,
@@ -51,7 +60,7 @@ local DUNGEONS = {
     ["세데크 전당"]=true,
     ["어둠의 미궁"]=true,
     ["강제 노역소"]=true,
-    ["지하수령"]=true,
+    ["지하수렁"]=true,
     ["증기 저장고"]=true,
     ["옛 힐스브래드 구릉지"]=true,
     ["검은늪"]=true,
@@ -71,9 +80,26 @@ local DUNGEONS = {
     ["태양샘 고원"]=true,
 }
 
+-- 한글 던전 지역명 → 영어 약자 (DUNGEON_ABBR 정의 뒤에서 채움). beta 영어 서버 출력용
+local ZONE_ABBR = {}
+-- 지역명 비교용 키: 공백·콜론 제거 ("발굴현장: 저습지" = "발굴 현장:저습지")
+local function ZoneKey(zone) return (zone:gsub("[%s:：]", "")) end
+local ZONE_ABBR_N = setmetatable({}, { __index = function(t, k)
+    for full, abbr in pairs(ZONE_ABBR) do
+        if ZoneKey(full) == k then t[k] = abbr; return abbr end
+    end
+end })
+local function ZoneAbbr(zone)
+    if not zone or zone == "" then return zone end
+    return ZONE_ABBR[zone] or ZONE_ABBR_N[ZoneKey(zone)] or zone
+end
+
+local DUNGEONS_N = {}
+for z in pairs(DUNGEONS) do DUNGEONS_N[ZoneKey(z)] = true end
+
 local function IsDungeon(zone)
     if not zone or zone == "" then return false end
-    return DUNGEONS[zone] == true
+    return DUNGEONS[zone] == true or DUNGEONS_N[ZoneKey(zone)] == true
 end
 
 -- NWB 영문 던전명 → 한글 지역명
@@ -87,7 +113,7 @@ local NWB_DUNGEON_KO = {
     ["Magisters' Terrace"]    = "마법학자의 정원",
     ["The Botanica"]          = "신록의 정원",
     ["The Mechanar"]          = "메카나르",
-    ["The Underbog"]          = "지하수령",
+    ["The Underbog"]          = "지하수렁",
     ["The Blood Furnace"]     = "피의 용광로",
     ["Hellfire Ramparts"]     = "지옥불 성루",
     ["Mana-Tombs"]            = "마나 무덤",
@@ -204,7 +230,8 @@ local guildCmdCooldown = {} -- [커맨드] = GetTime() : 길드 명령 중복 �
 -- ============================================================
 -- 길드 채팅 전송 (모든 길드원에게 보임)
 -- ============================================================
-local function GG_Print(msg, onSent)
+-- feature: 길드 기능 꺼짐 상태에서도 개별 허용할 기능 키 (ns.GuildAllow)
+local function GG_Print(msg, onSent, feature)
     if paused then
         if onSent then onSent() end
         return
@@ -213,15 +240,15 @@ local function GG_Print(msg, onSent)
         if onSent then onSent() end
         return
     end
-    if UnitIsAFK("player") then msg = "<자리비움> " .. msg end
+    if ns.IsAFK() then msg = "<자리비움> " .. msg end
     local box = ChatFrame1EditBox
     if box and box:IsVisible() then
         C_Timer.After(2, function()
-            SendChatMessage(msg, "GUILD")
+            SendChatMessage(msg, "GUILD", nil, nil, feature)
             if onSent then onSent() end
         end)
     else
-        SendChatMessage(msg, "GUILD")
+        SendChatMessage(msg, "GUILD", nil, nil, feature)
         if onSent then onSent() end
     end
 end
@@ -249,7 +276,7 @@ local function _QueueFlush(key)
         elseif e.whisperTo then
             SendChatMessage(e.msg, "WHISPER", nil, e.whisperTo)
         elseif not paused then
-            SendChatMessage(e.msg, "GUILD")
+            SendChatMessage(e.msg, "GUILD", nil, nil, "cmd")  -- 길드챗 큐 = !길드 명령 응답
         end
         if q.delay == 0 then
             _QueueFlush(key)
@@ -267,7 +294,7 @@ end
 
 local function GG_Send(msg, whisperTo)
     if not msg or msg == "" then return end
-    if whisperTo ~= "LOCAL" and UnitIsAFK("player") then
+    if whisperTo ~= "LOCAL" and ns.IsAFK() then
         msg = "<자리비움> " .. msg
     end
     local key = _QueueKey(whisperTo)
@@ -421,6 +448,28 @@ local function ShowMentionAlert(sender, msg)
 end
 
 -- ============================================================
+-- Forever(한국 서버): 길드 명령 응답은 한글. *_EN 표는 영어 별칭 참고용으로만 남김
+-- ============================================================
+local CLASS_EN = {
+    ["전사"]="Warrior", ["성기사"]="Paladin", ["사냥꾼"]="Hunter", ["도적"]="Rogue",
+    ["사제"]="Priest", ["주술사"]="Shaman", ["마법사"]="Mage", ["흑마법사"]="Warlock",
+    ["드루이드"]="Druid", ["죽음의 기사"]="Death Knight",
+}
+local RACE_EN = {
+    ["오크"]="Orc", ["포세이큰"]="Undead", ["언데드"]="Undead", ["타우렌"]="Tauren", ["트롤"]="Troll",
+    ["블엘"]="Blood Elf", ["혈요정"]="Blood Elf", ["블러드 엘프"]="Blood Elf",
+    ["인간"]="Human", ["드워프"]="Dwarf", ["나이트 엘프"]="Night Elf", ["노움"]="Gnome", ["드레나이"]="Draenei",
+}
+-- GetPlayerInfoByGUID 영문 종족 토큰 → 표시명
+local RACE_TOKEN_EN = { Scourge="Undead", NightElf="Night Elf", BloodElf="Blood Elf" }
+local PROF_EN = {
+    ["대장"]="Blacksmithing", ["재봉"]="Tailoring", ["연금"]="Alchemy", ["기공"]="Engineering",
+    ["가세"]="Leatherworking", ["보세"]="Jewelcrafting", ["채광"]="Mining", ["채집"]="Herbalism",
+    ["마부"]="Enchanting", ["무두"]="Skinning", ["요리"]="Cooking", ["낚시"]="Fishing",
+}
+local function EN(tbl, s) return s end  -- 한글 그대로 출력
+
+-- ============================================================
 -- 직업/종족 분포 수집 후 콜백 호출
 -- ============================================================
 local function CollectClassDistribution(callback)
@@ -439,7 +488,7 @@ local function CollectClassDistribution(callback)
             end
         end
         local parts = {}
-        for cls, n in pairs(counts) do parts[#parts + 1] = cls .. " " .. n .. "명" end
+        for cls, n in pairs(counts) do parts[#parts + 1] = EN(CLASS_EN, cls) .. " " .. n end
         table.sort(parts)
         callback(parts, online)
     end)
@@ -456,15 +505,16 @@ local function CollectRaceDistribution(callback)
             if isOnline then
                 online = online + 1
                 if guid and guid ~= "" then
-                    local _, _, localizedRace = GetPlayerInfoByGUID(guid)
-                    if localizedRace and localizedRace ~= "" then
-                        counts[localizedRace] = (counts[localizedRace] or 0) + 1
+                    local _, _, localizedRace, raceToken = GetPlayerInfoByGUID(guid)
+                    local race = (localizedRace and localizedRace ~= "") and localizedRace or raceToken
+                    if race and race ~= "" then
+                        counts[race] = (counts[race] or 0) + 1
                     end
                 end
             end
         end
         local parts = {}
-        for race, n in pairs(counts) do parts[#parts + 1] = race .. " " .. n .. "명" end
+        for race, n in pairs(counts) do parts[#parts + 1] = race .. " " .. n end
         table.sort(parts)
         callback(parts, online)
     end)
@@ -508,7 +558,7 @@ local function CollectProfessionDistribution(callback)
         local parts = {}
         for _, kw in ipairs(PROF_KEYWORDS) do
             if counts[kw] then
-                parts[#parts + 1] = kw .. " " .. counts[kw] .. "명"
+                parts[#parts + 1] = EN(PROF_EN, kw) .. " " .. counts[kw]
             end
         end
         callback(parts, total)
@@ -545,6 +595,13 @@ end
 for alias, canonical in pairs(PROF_ALIASES) do
     PROF_CMD_KEYWORDS["!" .. alias] = canonical
 end
+-- English
+for en, kw in pairs({ bs="대장", blacksmithing="대장", tailoring="재봉", alchemy="연금", engineering="기공",
+                      lw="가세", leatherworking="가세", jc="보세", jewelcrafting="보세", mining="채광",
+                      herbalism="채집", herb="채집", enchanting="마부", ench="마부", skinning="무두",
+                      cooking="요리", fishing="낚시" }) do
+    PROF_CMD_KEYWORDS["!" .. en] = kw
+end
 
 local function CollectProfessionMembers(keyword, callback)
     C_GuildInfo.GuildRoster()
@@ -580,9 +637,9 @@ local function HandleGuildProfList(keyword, whisperTo)
 
     CollectProfessionMembers(keyword, function(members)
         if #members == 0 then
-            GG_Send(keyword .. " 접속중인 길드원 없음", whisperTo)
+            GG_Send(EN(PROF_EN, keyword) .. ": 접속자 없음", whisperTo)
         else
-            GG_Send(keyword .. " (" .. #members .. "명): " .. table.concat(members, "  "), whisperTo)
+            GG_Send(EN(PROF_EN, keyword) .. " (" .. #members .. "): " .. table.concat(members, "  "), whisperTo)
         end
     end)
 end
@@ -602,6 +659,13 @@ local CLASS_KEYWORDS = {
     ["!드루이드"]   = "드루이드",
     ["!죽기"]       = "죽음의 기사",
     ["!죽음의기사"] = "죽음의 기사",
+    -- 한글 별칭
+    ["!기사"]="성기사", ["!성기"]="성기사", ["!냥꾼"]="사냥꾼", ["!냥"]="사냥꾼",
+    ["!술사"]="주술사", ["!법사"]="마법사", ["!흑마"]="흑마법사", ["!드루"]="드루이드",
+    -- English
+    ["!warrior"]="전사", ["!paladin"]="성기사", ["!hunter"]="사냥꾼", ["!rogue"]="도적",
+    ["!priest"]="사제", ["!shaman"]="주술사", ["!mage"]="마법사", ["!warlock"]="흑마법사",
+    ["!druid"]="드루이드", ["!dk"]="죽음의 기사",
 }
 
 local function CollectClassMembers(className, callback)
@@ -638,6 +702,13 @@ local RACE_KEYWORDS = {
     ["!나이트엘프"] = "나이트 엘프",
     ["!노움"]       = "노움",
     ["!드레나이"]   = "드레나이",
+    -- 한글 별칭
+    ["!휴먼"]="인간", ["!혈요정"]="블엘", ["!블러드엘프"]="블엘", ["!드레"]="드레나이",
+    ["!나이트 엘프"]="나이트 엘프", ["!언데"]="포세이큰",
+    -- English
+    ["!orc"]="오크", ["!undead"]="포세이큰", ["!tauren"]="타우렌", ["!troll"]="트롤",
+    ["!bloodelf"]="블엘", ["!be"]="블엘", ["!human"]="인간", ["!dwarf"]="드워프",
+    ["!nightelf"]="나이트 엘프", ["!ne"]="나이트 엘프", ["!gnome"]="노움", ["!draenei"]="드레나이",
 }
 
 local RACE_API_NAMES = { ["블엘"] = "혈요정" }
@@ -677,9 +748,9 @@ local function HandleGuildRaceList(raceName, whisperTo)
 
     CollectRaceMembers(raceName, function(members)
         if #members == 0 then
-            GG_Send(raceName .. " 접속중인 길드원 없음", whisperTo)
+            GG_Send(EN(RACE_EN, raceName) .. ": 접속자 없음", whisperTo)
         else
-            GG_Send(raceName .. " (" .. #members .. "명): " .. table.concat(members, "  "), whisperTo)
+            GG_Send(EN(RACE_EN, raceName) .. " (" .. #members .. "): " .. table.concat(members, "  "), whisperTo)
         end
     end)
 end
@@ -709,8 +780,9 @@ local function HandleGuildCharInfo(targetName, whisperTo)
                 if shortName:lower() == targetName:lower() then
                     local race = ""
                     if guid and guid ~= "" then
-                        local _, _, localizedRace = GetPlayerInfoByGUID(guid)
-                        if localizedRace and localizedRace ~= "" then race = localizedRace end
+                        local _, _, localizedRace, raceToken = GetPlayerInfoByGUID(guid)
+                        if localizedRace and localizedRace ~= "" then race = localizedRace
+                        elseif raceToken and raceToken ~= "" then race = raceToken end
                     end
                     local onlineStr  = isOnline and "● 접속중" or "○ 오프라인"
                     local zoneStr    = (zone and zone ~= "") and zone or "-"
@@ -722,13 +794,13 @@ local function HandleGuildCharInfo(targetName, whisperTo)
                         local scoreDisp = gearInfo.ilvl and ("ilvl:" .. tostring(gearInfo.ilvl) .. "(gs:" .. gs .. ")") or tostring(gearInfo.score or "?")
                         gsStr = "  /  " .. scoreDisp
                     end
-                    GG_Send(shortName .. " [" .. rankName .. "]  " .. race .. " " .. className .. "  " .. level .. "레벨  " .. onlineStr .. gsStr, whisperTo)
+                    GG_Send(shortName .. " [" .. rankName .. "]  lv" .. level .. " " .. race .. " " .. EN(CLASS_EN, className) .. "  " .. onlineStr .. gsStr, whisperTo)
                     GG_Send("지역: " .. zoneStr .. "  /  쪽지: " .. noteStr, whisperTo)
                     return
                 end
             end
         end
-        GG_Send("[" .. targetName .. "] 길드원을 찾을 수 없습니다", whisperTo)
+        GG_Send("[" .. targetName .. "] 길드에 없는 이름입니다", whisperTo)
     end)
 end
 
@@ -742,9 +814,9 @@ local function HandleGuildClassList(className, whisperTo)
 
     CollectClassMembers(className, function(members)
         if #members == 0 then
-            GG_Send(className .. " 접속중인 길드원 없음", whisperTo)
+            GG_Send(EN(CLASS_EN, className) .. ": 접속자 없음", whisperTo)
         else
-            GG_Send(className .. " (" .. #members .. "명): " .. table.concat(members, "  "), whisperTo)
+            GG_Send(EN(CLASS_EN, className) .. " (" .. #members .. "): " .. table.concat(members, "  "), whisperTo)
         end
     end)
 end
@@ -767,8 +839,8 @@ local function CollectDungeonStatus(callback)
 end
 
 local DAILY_LABEL = {
-    dailyHeroic = "일일 영던",
-    dailyNormal = "일일 일던",
+    dailyHeroic = "영웅 일퀘",
+    dailyNormal = "일반 일퀘",
     weeklyBG    = "주간 전장",
 }
 
@@ -828,9 +900,9 @@ local function HandleDailyQuery(key, whisperTo)
     end
     local entry = GetDailyInfo(key)
     if entry then
-        GG_Send(label .. ": " .. entry.value .. "  (설정: " .. entry.setter .. ")", whisperTo)
+        GG_Send(label .. ": " .. entry.value .. "  (등록: " .. entry.setter .. ")", whisperTo)
     else
-        GG_Send(label .. " 정보 없음", whisperTo)
+        GG_Send(label .. ": 미확인", whisperTo)
     end
 end
 
@@ -843,9 +915,9 @@ local function HandleDailyAll(whisperTo)
         end
         local entry = GetDailyInfo(key)
         if entry then
-            return label .. ": " .. entry.value .. "  (설정: " .. entry.setter .. ")"
+            return label .. ": " .. entry.value .. "  (등록: " .. entry.setter .. ")"
         else
-            return label .. ": 미등록"
+            return label .. ": 미확인"
         end
     end
     GG_Send(line("dailyNormal"), whisperTo)
@@ -861,35 +933,21 @@ local function HandleGuildCommand(cmd, whisperTo)
     end
 
     if cmd == "help" then
-        GG_Send("── 현황 명령어 ──────────────────", whisperTo)
-        GG_Send("!현황  !레벨  !직업  !종족  !지역  !인던  !전문기술  !등급", whisperTo)
-        GG_Send("!정보 [이름]", whisperTo)
-        GG_Send("── 장비 명령어 ──────────────────", whisperTo)
-        GG_Send("!장비 [이름]  !장비길드  !장비전체", whisperTo)
-        GG_Send("!도움 장비  — 슬롯별 조회 명령어 보기", whisperTo)
-        GG_Send("── 일정 명령어 ──────────────────", whisperTo)
+        GG_Send("-- 길드 명령어 (길드챗에 입력, 답은 귓말로) --", whisperTo)
+        GG_Send("!현황  !레벨  !직업  !종족  !지역  !인던  !전문기술  !등급  !정보 <이름>", whisperTo)
         GG_Send("!일일  !일던  !영던  !전장", whisperTo)
-        GG_Send("── 기타 명령어 ──────────────────", whisperTo)
-        GG_Send("!길드[명령어]  — 길드챗으로 출력  예) !길드현황", whisperTo)
-        GG_Send("!비스 [직업] [슬롯]  — 슬롯별 BIS 조회  예) !비스 전사 머리", whisperTo)
-        GG_Send("!도움 직업 / 종족 / 전문기술 / 일정  — 상세 보기", whisperTo)
+        GG_Send("!길드<명령> 으로 치면 길드챗으로 답함 (예: !길드직업)", whisperTo)
+        GG_Send("더보기: !도움 직업 / !도움 종족 / !도움 전문기술", whisperTo)
     elseif cmd == "help_class" then
-        GG_Send("직업별 멤버목록: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드 !죽기", whisperTo)
+        GG_Send("직업별 접속자: !전사 !성기사 !사냥꾼 !도적 !사제 !주술사 !마법사 !흑마법사 !드루이드", whisperTo)
     elseif cmd == "help_race" then
-        GG_Send("종족별 멤버목록: !오크 !언데드 !타우렌 !트롤 !블엘 !인간 !드워프 !나엘 !노움 !드레나이", whisperTo)
+        GG_Send("종족별 접속자: !오크 !언데드 !타우렌 !트롤 !블엘 !인간 !드워프 !나엘 !노움 !드레나이", whisperTo)
     elseif cmd == "help_prof" then
-        GG_Send("전문기술별 멤버목록: !대장 !재봉 !연금 !기공 !가세 !보세 !약초 !채광 !마부 !무두 !요리 !낚시", whisperTo)
+        GG_Send("전문기술별 접속자 (쪽지 기준): !대장 !재봉 !연금 !기공 !가세 !보세 !채광 !채집 !마부 !무두 !요리 !낚시", whisperTo)
     elseif cmd == "help_gear" then
-        GG_Send("!장비 - 내 장비점수 + 장비 목록", whisperTo)
-        GG_Send("!장비 [이름] - 특정 길드원 장비점수 + 장비 목록", whisperTo)
-        GG_Send("!장비길드 - 길드원 장비점수 순위", whisperTo)
-        GG_Send("!장비전체 - 수집된 전원 순위", whisperTo)
-        GG_Send("─── 슬롯 조회 ([이름] 생략 시 본인) ───", whisperTo)
-        GG_Send("!머리 !목 !어깨 !등 !가슴 !벨트 !다리 !발 !손목 !손", whisperTo)
-        GG_Send("!손가락(반지x2) !장신구(x2) !주장비 !보조장비 !원거리", whisperTo)
+        GG_Send("장비 명령: !장비 [이름]", whisperTo)
     elseif cmd == "help_daily" then
-        GG_Send("일정 등록 (길드챗): !일일일던 [이름]  /  !일일영던 [이름]  /  !주간전장 [이름]", whisperTo)
-        GG_Send("일정 조회: !일던  !영던  !전장  (값 없이 등록 명령어 치면 초기화)", whisperTo)
+        GG_Send("확인: !일일  !일던  !영던  !전장", whisperTo)
     elseif cmd == "status" then
         C_GuildInfo.GuildRoster()
         C_Timer.After(0.3, function()
@@ -899,67 +957,67 @@ local function HandleGuildCommand(cmd, whisperTo)
                 local _, _, _, _, _, _, _, _, isOnline = GetGuildRosterInfo(i)
                 if isOnline then online = online + 1 end
             end
-            GG_Send("접속중: " .. online .. "명 / 전체: " .. total .. "명", whisperTo)
+            GG_Send("접속: " .. online .. "명 / 전체: " .. total .. "명", whisperTo)
         end)
     elseif cmd == "levels" then
         C_GuildInfo.GuildRoster()
         C_Timer.After(0.3, function()
             local total = GetNumGuildMembers()
-            local buckets = { [70]=0, [60]=0, [11]=0, [1]=0 }
+            -- Forever 만렙 60: 60 / 10레벨 단위 구간
+            local ranges = {
+                { 60, 60, "60" }, { 50, 59, "50-59" }, { 40, 49, "40-49" },
+                { 30, 39, "30-39" }, { 20, 29, "20-29" }, { 10, 19, "10-19" }, { 1, 9, "1-9" },
+            }
+            local counts = {}
             local online = 0
             for i = 1, total do
                 local _, _, _, level, _, _, _, _, isOnline = GetGuildRosterInfo(i)
                 if isOnline then
                     online = online + 1
-                    if level >= 70 then
-                        buckets[70] = buckets[70] + 1
-                    elseif level >= 60 then
-                        buckets[60] = buckets[60] + 1
-                    elseif level >= 11 then
-                        buckets[11] = buckets[11] + 1
-                    else
-                        buckets[1] = buckets[1] + 1
+                    for r = 1, #ranges do
+                        if level >= ranges[r][1] then
+                            counts[r] = (counts[r] or 0) + 1
+                            break
+                        end
                     end
                 end
             end
-            local parts = {
-                "70레벨: " .. buckets[70] .. "명",
-                "60~69: "  .. buckets[60] .. "명",
-                "11~59: "  .. buckets[11] .. "명",
-                "1~10: "   .. buckets[1]  .. "명",
-            }
+            local parts = {}
+            for r = 1, #ranges do
+                parts[#parts + 1] = ranges[r][3] .. ": " .. (counts[r] or 0)
+            end
             if #parts == 0 then return end
-            GG_Send("레벨분포 (접속중 " .. online .. "명): " .. table.concat(parts, " / "), whisperTo)
+            GG_Send("레벨 분포 (접속 " .. online .. "명): " .. table.concat(parts, " / "), whisperTo)
         end)
     elseif cmd == "classes" then
         CollectClassDistribution(function(parts, online)
             if #parts == 0 then return end
-            GG_Send("직업분포 (접속중 " .. online .. "명): " .. table.concat(parts, " / "), whisperTo)
+            GG_Send("직업 분포 (접속 " .. online .. "명): " .. table.concat(parts, " / "), whisperTo)
         end)
     elseif cmd == "races" then
         CollectRaceDistribution(function(parts, online)
             if #parts == 0 then return end
-            GG_Send("종족분포 (접속중 " .. online .. "명): " .. table.concat(parts, " / "), whisperTo)
+            GG_Send("종족 분포 (접속 " .. online .. "명): " .. table.concat(parts, " / "), whisperTo)
         end)
     elseif cmd == "dungeon" then
         CollectDungeonStatus(function(dungeons)
             local parts = {}
             for zone, members in pairs(dungeons) do
-                parts[#parts + 1] = zone .. " (" .. #members .. "명): " .. table.concat(members, ", ")
+                parts[#parts + 1] = zone .. " (" .. #members .. "): " .. table.concat(members, ", ")
             end
             table.sort(parts)
             if #parts == 0 then
-                GG_Send("현재 인던 중인 길드원 없음", whisperTo)
+                GG_Send("인던에 있는 길드원 없음", whisperTo)
             else
-                GG_Send("인던 현황 - " .. table.concat(parts, " / "), whisperTo)
+                GG_Send("인던 - " .. table.concat(parts, " / "), whisperTo)
             end
         end)
     elseif cmd == "profs" then
         CollectProfessionDistribution(function(parts, total)
             if #parts == 0 then
-                GG_Send("전문기술 메모 없음", whisperTo)
+                GG_Send("쪽지에 전문기술 정보 없음", whisperTo)
             else
-                GG_Send("전문기술 현황 (전체 " .. total .. "명): " .. table.concat(parts, " / "), whisperTo)
+                GG_Send("전문기술 (" .. total .. "명, 쪽지 기준): " .. table.concat(parts, " / "), whisperTo)
             end
         end)
     elseif cmd == "zones" then
@@ -979,19 +1037,28 @@ local function HandleGuildCommand(cmd, whisperTo)
             for zone in pairs(zones) do zoneNames[#zoneNames + 1] = zone end
             table.sort(zoneNames)
             if #zoneNames == 0 then
-                GG_Send("접속중인 길드원 없음", whisperTo)
+                GG_Send("접속자 없음", whisperTo)
             else
+                -- 채팅 전송 횟수 제한(beta) 때문에 지역별 한 줄씩이 아니라 255바이트 안에서 묶어 보냄
+                local line = ""
                 for _, zone in ipairs(zoneNames) do
                     local members = zones[zone]
                     table.sort(members)
-                    GG_Send(zone .. "(" .. #members .. "명): " .. table.concat(members, ", "), whisperTo)
+                    local part = zone .. " (" .. #members .. "): " .. table.concat(members, ", ")
+                    if line ~= "" and #line + 3 + #part > 250 then
+                        GG_Send(line, whisperTo)
+                        line = part
+                    else
+                        line = (line == "") and part or (line .. " / " .. part)
+                    end
                 end
+                if line ~= "" then GG_Send(line, whisperTo) end
             end
         end)
     elseif cmd == "ranks" then
         local num = GuildControlGetNumRanks and GuildControlGetNumRanks() or 0
         if num == 0 then
-            GG_Send("등급 정보를 불러올 수 없습니다", whisperTo)
+            GG_Send("길드 등급을 읽을 수 없음", whisperTo)
         else
             local parts = {}
             for i = 1, num do
@@ -1000,7 +1067,7 @@ local function HandleGuildCommand(cmd, whisperTo)
                     parts[#parts + 1] = i .. ". " .. rankName
                 end
             end
-            GG_Send("길드 등급 (" .. num .. "개): " .. table.concat(parts, " / "), whisperTo)
+            GG_Send("길드 등급 (" .. num .. "): " .. table.concat(parts, " / "), whisperTo)
         end
     elseif cmd:sub(1, 5) == "rank:" then
         local targetRank = cmd:sub(6)
@@ -1021,14 +1088,23 @@ local function HandleGuildCommand(cmd, whisperTo)
                 parts[#parts + 1] = m.name .. "(" .. m.level .. ")"
             end
             if #parts == 0 then
-                GG_Send("[" .. targetRank .. "] 접속중인 길드원 없음", whisperTo)
+                GG_Send("[" .. targetRank .. "] 접속자 없음", whisperTo)
             else
-                GG_Send("[" .. targetRank .. "] (" .. #parts .. "명): " .. table.concat(parts, "  "), whisperTo)
+                GG_Send("[" .. targetRank .. "] (" .. #parts .. "): " .. table.concat(parts, "  "), whisperTo)
             end
         end)
     elseif cmd == "추적" or cmd == "추적끄기" then
         local canceled = false
-        if GetNumTrackingTypes then
+        if C_Minimap and C_Minimap.GetNumTrackingTypes then
+            for i = 1, C_Minimap.GetNumTrackingTypes() do
+                local info = C_Minimap.GetTrackingInfo(i)
+                if info and info.active and info.name and info.type == "spell" then
+                    C_Minimap.SetTracking(i, false)
+                    GG_Print(info.name .. " 해제 시도")
+                    canceled = true
+                end
+            end
+        elseif GetNumTrackingTypes then
             for i = 1, GetNumTrackingTypes() do
                 local _, name, active = GetTrackingInfo(i)
                 if active and name then
@@ -1050,12 +1126,22 @@ end
 -- 반환: 처리됐으면 true, 아니면 false
 -- ============================================================
 local DAILY_GET = {
+    ["normal"] = "dailyNormal", ["heroic"] = "dailyHeroic", ["bg"] = "weeklyBG",
     ["일던"] = "dailyNormal",
     ["영던"] = "dailyHeroic",
     ["전장"] = "weeklyBG",
 }
 
 local CMD_MAP = {
+    -- English (beta 영어 테스터 서버)
+    ["status"]="status", ["online"]="status", ["levels"]="levels", ["classes"]="classes",
+    ["races"]="races", ["dungeons"]="dungeon", ["zones"]="zones", ["profs"]="profs",
+    ["ranks"]="ranks", ["help"]="help", ["commands"]="help",
+    -- 단수형도 허용 (!guildrace 등)
+    ["level"]="levels", ["class"]="classes", ["race"]="races", ["zone"]="zones",
+    ["dungeon"]="dungeon", ["prof"]="profs", ["professions"]="profs", ["rank"]="ranks",
+    ["help class"]="help_class", ["help race"]="help_race", ["help prof"]="help_prof",
+    ["help gear"]="help_gear", ["help daily"]="help_daily",
     ["현황"]="status", ["레벨"]="levels", ["직업"]="classes",
     ["종족"]="races",  ["인던"]="dungeon", ["지역"]="zones",
     ["전문기술"]="profs", ["등급"]="ranks",
@@ -1064,19 +1150,28 @@ local CMD_MAP = {
     ["도움 장비"]="help_gear", ["도움 일정"]="help_daily",
 }
 
+-- 영어 단축 접두어 !g 판별용: 실행 없이 알려진 영어/한글 기본 명령인지 확인
+local function IsKnownCommand(sub)
+    local key = strtrim(sub):lower()
+    return CMD_MAP[key] or DAILY_GET[key] or key == "daily" or key == "일일"
+        or CLASS_KEYWORDS["!" .. key] or RACE_KEYWORDS["!" .. key] or PROF_CMD_KEYWORDS["!" .. key]
+        or key:match("^info%s+.+$") ~= nil
+end
+
 local function DispatchCommand(sub, whisperTo, senderName)
-    if CMD_MAP[sub] then
-        HandleGuildCommand(CMD_MAP[sub], whisperTo)
-    elseif sub == "일일" then
+    local key = strtrim(sub):lower()  -- 영어 명령어 대소문자 무시 (한글은 영향 없음)
+    if CMD_MAP[key] then
+        HandleGuildCommand(CMD_MAP[key], whisperTo)
+    elseif key == "일일" or key == "daily" then
         HandleDailyAll(whisperTo)
-    elseif DAILY_GET[sub] then
-        HandleDailyQuery(DAILY_GET[sub], whisperTo)
-    elseif CLASS_KEYWORDS["!" .. sub] then
-        HandleGuildClassList(CLASS_KEYWORDS["!" .. sub], whisperTo)
-    elseif RACE_KEYWORDS["!" .. sub] then
-        HandleGuildRaceList(RACE_KEYWORDS["!" .. sub], whisperTo)
-    elseif PROF_CMD_KEYWORDS["!" .. sub] then
-        HandleGuildProfList(PROF_CMD_KEYWORDS["!" .. sub], whisperTo)
+    elseif DAILY_GET[key] then
+        HandleDailyQuery(DAILY_GET[key], whisperTo)
+    elseif CLASS_KEYWORDS["!" .. key] then
+        HandleGuildClassList(CLASS_KEYWORDS["!" .. key], whisperTo)
+    elseif RACE_KEYWORDS["!" .. key] then
+        HandleGuildRaceList(RACE_KEYWORDS["!" .. key], whisperTo)
+    elseif PROF_CMD_KEYWORDS["!" .. key] then
+        HandleGuildProfList(PROF_CMD_KEYWORDS["!" .. key], whisperTo)
     elseif sub == "장비" then
         if MyGreeting_GetGearScore then MyGreeting_GetGearScore(senderName, whisperTo) end
     elseif sub == "장비현황" or sub == "수집" then
@@ -1114,7 +1209,7 @@ local function DispatchCommand(sub, whisperTo, senderName)
                 local targetName = (slotTarget and strtrim(slotTarget) ~= "") and strtrim(slotTarget) or senderName
                 if MyGreeting_GetGearSlot then MyGreeting_GetGearSlot(targetName, slotIds, whisperTo) end
             else
-                local infoT = sub:match("^정보%s+(.+)$")
+                local infoT = sub:match("^정보%s+(.+)$") or sub:match("^[Ii][Nn][Ff][Oo]%s+(.+)$")
                 local rankT = sub:match("^등급%s+(.+)$")
                 if infoT then
                     HandleGuildCharInfo(infoT, whisperTo)
@@ -1170,7 +1265,8 @@ local function ScheduleGreeting(name, isNew)
 
         -- 현재 파티원이면 PartyGreeter가 인사하므로 길드 인사 생략
         for i = 1, 4 do
-            if UnitExists("party" .. i) and UnitName("party" .. i) == name then
+            local pu = "party" .. i
+            if UnitExists(pu) and (UnitName(pu) == name or ns.UnitWhisperName(pu) == name) then
                 if db then db.knownMembers[name] = true end
                 return
             end
@@ -1182,7 +1278,7 @@ local function ScheduleGreeting(name, isNew)
         if note and note ~= "" then
             msg = msg .. " <" .. note .. ">"
         end
-        GG_Print(msg)
+        GG_Print(msg, nil, key)
         -- 인사 후 knownMembers에 등록
         if db then
             db.knownMembers[name] = true
@@ -1221,7 +1317,7 @@ local function ProcessRosterUpdate()
     -- ── 신규 길드 가입자 감지 ─────────────────────────────
     local newlyJoined = {}
     for name in pairs(currentRoster) do
-        if name ~= myName and not prevRoster[name] then
+        if not ns.IsMe(name) and not prevRoster[name] then
             if currentOnline[name] then
                 ScheduleGreeting(name, true)
                 newlyJoined[name] = true  -- 접속 감지 중복 방지
@@ -1233,10 +1329,15 @@ local function ProcessRosterUpdate()
 
     -- ── 접속 / 오프라인 감지 ─────────────────────────────
     for name, isOnline in pairs(currentOnline) do
-        if name ~= myName and not newlyJoined[name] then
+        if not ns.IsMe(name) and not newlyJoined[name] then
             local wasOnline = prevOnline[name]
 
-            if isOnline and not wasOnline then
+            if isOnline and not wasOnline and db and db.loginGreetOff then
+                -- 접속 인사 꺼짐 (/mg 접속인사): 인사 없이 기존 멤버로만 등록
+                db.knownMembers[name] = true
+                dungeonGreeted[name] = nil
+
+            elseif isOnline and not wasOnline then
                 local now            = GetTime()
                 local offTime        = lastOffline[name]
                 local recentRejoined = offTime and (now - offTime) < REJOIN_SKIP_SEC
@@ -1262,7 +1363,7 @@ local function ProcessRosterUpdate()
 
     -- ── 길드원 던전 입장 감지 ─────────────────────────────
     for name, zone in pairs(currentZones) do
-        if name ~= myName and currentOnline[name] then
+        if not ns.IsMe(name) and currentOnline[name] then
             local prevZone = prevZones[name] or ""
             local greetEntry = dungeonGreeted[name]
             local recentlyGreeted = greetEntry and greetEntry.zone == zone
@@ -1289,7 +1390,7 @@ local function ProcessRosterUpdate()
 
     -- ── 길드원 전장 입장 감지 ─────────────────────────────
     for name, zone in pairs(currentZones) do
-        if name ~= myName and currentOnline[name] then
+        if not ns.IsMe(name) and currentOnline[name] then
             local prevZone = prevZones[name] or ""
             local bgEntry = bgGreeted[name]
             local recentlyGreeted = bgEntry and bgEntry.zone == zone
@@ -1312,7 +1413,7 @@ local function ProcessRosterUpdate()
 
     -- ── 레벨업 감지 ──────────────────────────────────────
     for name, newLevel in pairs(currentLevels) do
-        if name ~= myName then
+        if not ns.IsMe(name) then
             local oldLevel = prevLevels[name]
             if oldLevel and oldLevel > 0 and newLevel > oldLevel and (newLevel - oldLevel) <= 2 and currentOnline[name] then
                 ScheduleLevelUp(name, newLevel)
@@ -1349,6 +1450,17 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if not MyGreetingDB.knownMembers then MyGreetingDB.knownMembers = {} end
         if not MyGreetingDB.messages then MyGreetingDB.messages = {} end
         if not MyGreetingDB.dailyInfo then MyGreetingDB.dailyInfo = {} end
+        if MyGreetingDB.loginGreetOff == nil then MyGreetingDB.loginGreetOff = true end  -- beta 기본값: 접속 인사 끔
+        if MyGreetingDB.guildOff == nil then MyGreetingDB.guildOff = true end  -- beta 기본값: 길드 기능 전체 끔
+        -- 길드 기능 꺼짐이어도 켜둘 개별 기능 (welcome_new / sleep 등) — 현재 모두 끔
+        if not MyGreetingDB.guildOn or not MyGreetingDB.guildOnV then
+            MyGreetingDB.guildOn  = {}
+            MyGreetingDB.guildOnV = 2
+        end
+        if MyGreetingDB.guildOnV < 3 then  -- !명령어(cmd)는 길드 기능 꺼짐이어도 기본 켬
+            MyGreetingDB.guildOn.cmd = true
+            MyGreetingDB.guildOnV    = 3
+        end
         if not MyGreetingDB.dungeonGreeted then MyGreetingDB.dungeonGreeted = {} end
         if not MyGreetingDB.bgGreeted then MyGreetingDB.bgGreeted = {} end
         db = MyGreetingDB
@@ -1370,7 +1482,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 or "|cffFFFF00"
             local highlight = colorCode .. myName .. "|r"
             local function NameHighlightFilter(_, _, msg, ...)
-                if msg and msg:find(myName, 1, true) then
+                -- 보안값(secret) 메시지는 읽거나 바꿀 수 없음 → 그대로 통과
+                if issecretvalue and issecretvalue(msg) then return false, msg, ... end
+                if type(msg) == "string" and msg:find(myName, 1, true) then
                     msg = msg:gsub(myName, highlight)
                 end
                 return false, msg, ...
@@ -1383,7 +1497,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM",
             }
             for _, ch in ipairs(channels) do
-                ChatFrame_AddMessageEventFilter(ch, NameHighlightFilter)
+                ns.AddMessageEventFilter(ch, NameHighlightFilter)
             end
         end
 
@@ -1391,6 +1505,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if optPanel then
             if Settings and Settings.RegisterCanvasLayoutCategory then
                 local cat = Settings.RegisterCanvasLayoutCategory(optPanel, "myGreeting")
+                ns.settingsCategory = cat
                 Settings.RegisterAddOnCategory(cat)
             elseif InterfaceOptions_AddCategory then
                 InterfaceOptions_AddCategory(optPanel)
@@ -1456,7 +1571,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 -- 현재 온라인 전원을 lastOffline 에 기록
                 -- → 로그인 직후 "방금 접속" 으로 오탐 방지
                 for name, isOnline in pairs(online) do
-                    if isOnline and name ~= myName then
+                    if isOnline and not ns.IsMe(name) then
                         lastOffline[name] = GetTime()
                     end
                 end
@@ -1521,33 +1636,48 @@ frame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "CHAT_MSG_GUILD" then
         local msg, sender = ...
         if not msg or not sender then return end
+        if issecretvalue and (issecretvalue(msg) or issecretvalue(sender)) then return end
+        local replyTo = sender  -- 귓말 답장용 원래 이름 (서버명/성 포함 그대로)
         sender = sender:match("^([^%-]+)") or sender
+        local cmdOn   = ns.GuildAllow("cmd")
+        local sleepOn = ns.GuildAllow("sleep")
+        if not cmdOn and not sleepOn then return end
 
-        -- 길드 채팅 명령 감지 (본인 포함)
+        -- 길드 채팅 명령 감지 (본인 포함) — /mg 길드명령 으로 끄면 건너뜀
         local trimmed = strtrim(msg)
+        if cmdOn then
 
-        if trimmed == "!장비보내기" then
-            local macroCmd = '/script CreateMacro("/장비","135266",\'/script MyGS=GEAR_SCORE_CACHE and GEAR_SCORE_CACHE[UnitGUID("player")]\\n/script SendChatMessage("GS:"..(MyGS and MyGS[1]or 0),"WHISPER",nil,"보꿈밥")\',false)'
-            SendChatMessage(macroCmd, "WHISPER", nil, sender)
-        end
-
-        local whisperTarget, whisperMsg = trimmed:match("^!귓말%s+(%S+)%s*(.-)%s*$")
-        if whisperTarget then
-            if sender == myName then
-                local msg = (whisperMsg and whisperMsg ~= "") and whisperMsg or "안녕하세요 :)"
-                SendChatMessage(msg, "WHISPER", nil, whisperTarget)
+            if trimmed == "!장비보내기" then
+                local macroCmd = '/script CreateMacro("/장비","135266",\'/script MyGS=GEAR_SCORE_CACHE and GEAR_SCORE_CACHE[UnitGUID("player")]\\n/script SendChatMessage("GS:"..(MyGS and MyGS[1]or 0),"WHISPER",nil,"보꿈밥")\',false)'
+                SendChatMessage(macroCmd, "WHISPER", nil, sender)
             end
+
+            local whisperTarget, whisperMsg = trimmed:match("^!귓말%s+(%S+)%s*(.-)%s*$")
+            if whisperTarget then
+                if ns.IsMe(replyTo) then
+                    local msg = (whisperMsg and whisperMsg ~= "") and whisperMsg or "안녕하세요 :)"
+                    SendChatMessage(msg, "WHISPER", nil, whisperTarget)
+                end
+            end
+
+            -- !길드X → 길드챗으로 출력
+            local guildSub = trimmed:match("^!길드(.+)$") or trimmed:match("^![Gg][Uu][Ii][Ll][Dd]%s*(.+)$")
+            -- !g 단축 (예: !gclass). 단 !gnome 처럼 그 자체가 명령어면 일반 명령으로 처리
+            if not guildSub then
+                local whole = trimmed:match("^!(.+)$")
+                local gSub  = trimmed:match("^![Gg]%s*(.+)$")
+                if gSub and not (whole and IsKnownCommand(whole)) and IsKnownCommand(gSub) then
+                    guildSub = gSub
+                end
+            end
+            if guildSub then DispatchCommand(guildSub, nil, sender) end
+
+            -- !X → 친 사람 귓말로 출력
+            local plainSub = trimmed:match("^!(.+)$")
+            if plainSub and not guildSub then DispatchCommand(plainSub, replyTo, sender) end
         end
 
-        -- !길드X → 길드챗으로 출력
-        local guildSub = trimmed:match("^!길드(.+)$")
-        if guildSub then DispatchCommand(guildSub, nil, sender) end
-
-        -- !X → 친 사람 귓말로 출력
-        local plainSub = trimmed:match("^!(.+)$")
-        if plainSub and not guildSub then DispatchCommand(plainSub, sender, sender) end
-
-        if sender == myName then return end
+        if ns.IsMe(replyTo) then return end
 
         local lower = msg:lower()
         local isSleepMsg =
@@ -1576,10 +1706,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
             lower:find("이만 가겠") or lower:find("이만가겠") or
             lower:find("가봐야겠")
 
-        if isSleepMsg then
+        if isSleepMsg and sleepOn then
             local s = sender
             C_Timer.After(GREET_DELAY, function()
-                GG_Print(MyGreeting_GetMsg("sleep", {name=s}))
+                GG_Print(MyGreeting_GetMsg("sleep", {name=s}), nil, "sleep")
             end)
         end
 
@@ -1591,6 +1721,245 @@ frame:SetScript("OnEvent", function(self, event, ...)
     end
 
 end)
+
+-- ============================================================
+-- 던전 약자 → 한글 이름 (/mg 약자, /mg rfc)
+-- ============================================================
+local DUNGEON_ABBR = {
+    -- 클래식 던전
+    { "RFC",   "성난불길 협곡" },
+    { "WC",    "통곡의 동굴" },
+    { "DM/VC", "죽음의 폐광 (DM은 혈투의 전장일 수도)" },
+    { "SFK",   "그림자송곳니 성채" },
+    { "BFD",   "검은심연의 나락" },
+    { "STOCKS","스톰윈드 지하감옥" },
+    { "GNOMER","놈리건" },
+    { "RFK",   "가시덩굴 우리" },
+    { "SM",    "붉은십자군 수도원" },
+    { "GY",    "붉은십자군 수도원 - 묘지" },
+    { "LIB",   "붉은십자군 수도원 - 도서관" },
+    { "ARM",   "붉은십자군 수도원 - 무기고" },
+    { "CATH",  "붉은십자군 수도원 - 예배당" },
+    { "RFD",   "가시덩굴 구릉" },
+    { "ULDA/ULD", "울다만" },
+    { "ZF",    "줄파락" },
+    { "MARA",  "마라우돈" },
+    { "ST",    "아탈학카르 신전 (가라앉은 사원)" },
+    { "BRD",   "검은바위 나락" },
+    { "LBRS",  "검은바위 첨탑 (하층)" },
+    { "UBRS",  "검은바위 첨탑 (상층)" },
+    { "DME",   "혈투의 전장 (동쪽)" },
+    { "DMW",   "혈투의 전장 (서쪽)" },
+    { "DMN",   "혈투의 전장 (북쪽)" },
+    { "SCHOLO/SCHOLOMANCE", "스칼로맨스" },
+    { "STRAT", "스트라솔름" },
+    { "UD",    "스트라솔름 (언데드 쪽)" },
+    { "LIVE",  "스트라솔름 (살아있는 쪽)" },
+    -- beta 신규
+    { "ROL",   "로데론의 폐허 (Ruins of Lordaeron)" },
+    { "HOT",   "영주의 전당 (Hall of Thanes)" },
+    { "ES/ESW", "발굴현장: 저습지 (Excavation Site: Wetlands)" },
+    -- 클래식 레이드
+    { "MC",    "화산 심장부" },
+    { "ONY",   "오닉시아의 둥지" },
+    { "BWL",   "검은날개 둥지" },
+    { "ZG",    "줄구룹" },
+    { "AQ20",  "안퀴라즈 폐허" },
+    { "AQ40",  "안퀴라즈 사원" },
+    { "NAXX",  "낙스라마스" },
+    -- TBC 던전
+    { "RAMPS", "지옥불 성루" },
+    { "BF",    "피의 용광로" },
+    { "SH",    "으스러진 손의 전당" },
+    { "SP",    "강제 노역소" },
+    { "UB",    "지하수렁" },
+    { "SV",    "증기 저장고" },
+    { "MT",    "마나 무덤" },
+    { "AC",    "아키나이 납골당" },
+    { "SETH",  "세데크 전당" },
+    { "SL/SLABS", "어둠의 미궁" },
+    { "OHB/OH/DURN", "옛 힐스브래드 구릉지" },
+    { "BM",    "검은늪" },
+    { "BOT",   "신록의 정원" },
+    { "MECH",  "메카나르" },
+    { "ARC",   "알카트라즈" },
+    { "MGT",   "마법학자의 정원" },
+    -- TBC 레이드
+    { "KARA",  "카라잔" },
+    { "GRUUL", "그룰의 둥지" },
+    { "MAG",   "마그테리돈의 둥지" },
+    { "SSC",   "불뱀 제단" },
+    { "TK",    "폭풍우 요새" },
+    { "HYJAL/MH", "하이잘 정상" },
+    { "BT",    "검은 사원" },
+    { "ZA",    "줄아만" },
+    { "SWP",   "태양샘 고원" },
+}
+-- ZONE_ABBR 채우기: "SL/SLABS" → 첫 약자, "스트라솔름 (언데드 쪽)" → 괄호 앞 이름도 등록 (먼저 나온 것 우선)
+for _, e in ipairs(DUNGEON_ABBR) do
+    local abbr = e[1]:match("^[^/]+")
+    local full = e[2]
+    local base = full:match("^(.-)%s*%(") or full
+    ZONE_ABBR[full] = ZONE_ABBR[full] or abbr
+    ZONE_ABBR[base] = ZONE_ABBR[base] or abbr
+end
+-- 실제 지역명이 약자표와 다르거나 애매한 것
+ZONE_ABBR["혈투의 전장"]   = "DIRE MAUL"
+ZONE_ABBR["검은바위 첨탑"] = "BRS"
+ZONE_ABBR["울다만"]        = "ULDA"
+ZONE_ABBR["스칼로맨스"]    = "SCHOLO"
+
+-- 일반 지역 (필드/도시/전장) → 영어 약자 또는 짧은 영어명. 없는 지역은 한글 그대로
+for ko, en in pairs({
+    -- 동부 왕국
+    ["스톰윈드"]="SW", ["아이언포지"]="IF", ["언더시티"]="UC", ["실버문"]="SMC",
+    ["엘윈 숲"]="Elwynn", ["서부 몰락지대"]="Westfall", ["붉은마루 산맥"]="Redridge",
+    ["그늘숲"]="Duskwood", ["가시덤불 골짜기"]="STV", ["저습지"]="Wetlands",
+    ["던 모로"]="Dun Morogh", ["모단 호수"]="Loch Modan", ["은빛소나무 숲"]="Silverpine",
+    ["티리스팔 숲"]="Tirisfal", ["힐스브래드 구릉지"]="Hillsbrad", ["알터랙 산맥"]="Alterac",
+    ["아라시 고원"]="Arathi", ["동부 내륙지"]="Hinterlands", ["황야의 땅"]="Badlands",
+    ["이글거리는 협곡"]="Searing Gorge", ["불타는 평원"]="BSteppes", ["슬픔의 늪"]="Swamp",
+    ["저주받은 땅"]="Blasted Lands", ["서부 역병지대"]="WPL", ["동부 역병지대"]="EPL",
+    ["죽음의 고개"]="Deadwind", ["영원노래 숲"]="Eversong", ["유령의 땅"]="Ghostlands",
+    ["쿠엘다나스 섬"]="IoQD", ["무법항"]="Booty Bay",
+    -- 칼림도어
+    ["오그리마"]="Org", ["썬더 블러프"]="TB", ["다르나서스"]="Darn", ["엑소다르"]="Exodar",
+    ["듀로타"]="Durotar", ["불모의 땅"]="Barrens", ["멀고어"]="Mulgore", ["텔드랏실"]="Teldrassil",
+    ["어둠해안"]="Darkshore", ["잿빛 골짜기"]="Ashenvale", ["돌발톱 산맥"]="Stonetalon",
+    ["잊혀진 땅"]="Desolace", ["먼지진흙 습지대"]="Dustwallow", ["버섯구름 봉우리"]="1k Needles",
+    ["페랄라스"]="Feralas", ["타나리스"]="Tanaris", ["운고로 분화구"]="Un'Goro",
+    ["실리더스"]="Silithus", ["악령의 숲"]="Felwood", ["아즈샤라"]="Azshara",
+    ["여명의 설원"]="Winterspring", ["달의 숲"]="Moonglade",
+    ["하늘안개 섬"]="Azuremyst", ["핏빛안개 섬"]="Bloodmyst",
+    -- 아웃랜드
+    ["지옥불 반도"]="HFP", ["장가르 습지대"]="Zangar", ["테로카르 숲"]="Terokkar",
+    ["나그란드"]="Nagrand", ["칼날 산맥"]="BEM", ["황천의 폭풍"]="Netherstorm",
+    ["어둠달 골짜기"]="SMV", ["샤트라스"]="Shatt",
+    -- 전장
+    ["전쟁노래 협곡"]="WSG", ["아라시 분지"]="AB", ["알터랙 계곡"]="AV", ["폭풍의 눈"]="EotS",
+}) do ZONE_ABBR[ko] = ZONE_ABBR[ko] or en end
+
+-- 채팅/게임 용어 약자 → 영어 원문 + 한글 뜻 (/mg 채팅약자, /mg lfg)
+local CHAT_ABBR = {
+    -- 파티 구하기 / 거래
+    { "LFG",   "Looking For Group",  "파티 구함 (나를 넣어줄 파티 찾음)" },
+    { "LFM",   "Looking For More",   "인원 더 구함 (파티가 사람 모집)" },
+    { "LF",    "Looking For",        "~ 구함" },
+    { "LF1M",  "Looking For 1 More", "1명 더 구함" },
+    { "LF2M",  "Looking For 2 More", "2명 더 구함" },
+    { "LF3M",  "Looking For 3 More", "3명 더 구함" },
+    { "WTS",   "Want To Sell",       "팝니다" },
+    { "WTB",   "Want To Buy",        "삽니다" },
+    { "WTT",   "Want To Trade",      "교환합니다" },
+    { "PST",   "Please Send Tell",   "귓속말 주세요" },
+    { "PM/W",  "Private Message / Whisper", "귓속말" },
+    { "INV",   "Invite",             "초대 (파티 초대해 주세요)" },
+    { "SUMM/SUMMON", "Summon",       "소환" },
+    -- 인사 / 대화
+    { "TY/THX/TYVM", "Thank You",    "고마워요" },
+    { "NP",    "No Problem",         "천만에요 / 괜찮아요" },
+    { "GG",    "Good Game",          "수고했어요" },
+    { "GJ",    "Good Job",           "잘했어요" },
+    { "GL",    "Good Luck",          "행운을 빌어요" },
+    { "HF",    "Have Fun",           "즐겜하세요" },
+    { "GM",    "Good Morning / Game Master", "좋은 아침 / 운영자" },
+    { "GN",    "Good Night",         "잘 자요" },
+    { "GTG/G2G", "Got To Go",        "가봐야 해요" },
+    { "CYA",   "See Ya",             "또 봐요" },
+    { "BRB",   "Be Right Back",      "금방 올게요 (잠깐 자리비움)" },
+    { "AFK",   "Away From Keyboard", "자리비움" },
+    { "OMW",   "On My Way",          "가는 중" },
+    { "NVM",   "Never Mind",         "신경 쓰지 마세요" },
+    { "IDK",   "I Don't Know",       "몰라요" },
+    { "BTW",   "By The Way",         "그런데" },
+    { "LOL",   "Laughing Out Loud",  "ㅋㅋㅋ" },
+    { "OOM",   "Out Of Mana",        "마나 없음" },
+    { "WB",    "Welcome Back / World Buff", "어서 와요 / 월드 버프" },
+    -- 파티 역할 / 전투
+    { "DPS",   "Damage Per Second",  "딜러" },
+    { "MT",    "Main Tank",          "메인 탱커" },
+    { "OT",    "Off Tank",           "서브 탱커" },
+    { "CC",    "Crowd Control",      "군중 제어 (양·덫 등으로 몹 묶기)" },
+    { "AOE",   "Area Of Effect",     "광역" },
+    { "DOT",   "Damage Over Time",   "지속 피해" },
+    { "HOT",   "Heal Over Time",     "지속 치유" },
+    { "LOS",   "Line Of Sight",      "시야 (기둥 뒤로 숨기)" },
+    { "CD",    "Cooldown",           "재사용 대기시간" },
+    { "RES/REZ", "Resurrect",        "부활" },
+    { "HS",    "Hearthstone / Healthstone", "귀환석 / 생명석" },
+    { "SS",    "Soulstone",          "영혼석" },
+    { "HP",    "Health Points",      "생명력" },
+    { "MP",    "Mana Points",        "마나" },
+    { "XP/EXP", "Experience",        "경험치" },
+    { "LVL",   "Level",              "레벨" },
+    { "HC",    "Heroic",             "영웅 난이도" },
+    { "NM",    "Normal",             "일반 난이도" },
+    -- 아이템 / 루팅
+    { "BOP",   "Bind On Pickup",     "획득 시 귀속" },
+    { "BOE",   "Bind On Equip",      "착용 시 귀속" },
+    { "BIS",   "Best In Slot",       "부위별 최고 아이템" },
+    { "MS",    "Main Spec",          "주 특성 (주 특성 우선 입찰)" },
+    { "OS",    "Off Spec",           "보조 특성" },
+    { "SR",    "Soft Reserve",       "아이템 찜 (예약)" },
+    { "HR",    "Hard Reserve",       "아이템 확정 예약 (입찰 불가)" },
+    { "GDKP",  "Gold DKP",           "골드 경매 공대" },
+    { "DKP",   "Dragon Kill Points", "공대 점수제" },
+    { "SP",    "Spell Power",        "주문력" },
+    { "AP",    "Attack Power",       "전투력" },
+    { "MP5",   "Mana Per 5 sec",     "5초당 마나 회복" },
+    -- PvP / 지역
+    { "BG",    "Battleground",       "전장" },
+    { "WSG",   "Warsong Gulch",      "전쟁노래 협곡" },
+    { "AB",    "Arathi Basin",       "아라시 분지" },
+    { "AV",    "Alterac Valley",     "알터랙 계곡" },
+    { "EOTS",  "Eye Of The Storm",   "폭풍의 눈" },
+    { "KOS",   "Kill On Sight",      "보이면 죽임 (적대 대상)" },
+    { "WPVP",  "World PvP",          "필드 쟁" },
+    { "SW",    "Stormwind",          "스톰윈드" },
+    { "IF",    "Ironforge",          "아이언포지" },
+    { "DARN",  "Darnassus",          "다르나서스" },
+    { "ORG/OG", "Orgrimmar",         "오그리마" },
+    { "UC",    "Undercity",          "언더시티" },
+    { "TB",    "Thunder Bluff",      "썬더 블러프" },
+    { "SHATT", "Shattrath",          "샤트라스" },
+    { "BB",    "Booty Bay",          "무법항" },
+    { "STV",   "Stranglethorn Vale", "가시덤불 골짜기" },
+    { "EPL",   "Eastern Plaguelands", "동부 역병지대" },
+    { "WPL",   "Western Plaguelands", "서부 역병지대" },
+}
+
+-- 약자 → 설명 목록 (던전 MT=마나 무덤 / 채팅 MT=메인 탱커 처럼 겹치면 둘 다 보여줌)
+local ABBR_MAP = {}
+local function AddAbbr(keys, text)
+    for a in keys:gmatch("[^/]+") do
+        local k = strlower(a)
+        ABBR_MAP[k] = ABBR_MAP[k] or {}
+        table.insert(ABBR_MAP[k], text)
+    end
+end
+for _, e in ipairs(DUNGEON_ABBR) do AddAbbr(e[1], e[2] .. " (던전)") end
+for _, e in ipairs(CHAT_ABBR) do AddAbbr(e[1], e[2] .. " — " .. e[3]) end
+
+local function PrintAbbrList(title, list, fmt, perLine)
+    local L, line = "LOCAL", {}
+    GG_Send("─── " .. title .. " ───", L)
+    for i, e in ipairs(list) do
+        line[#line + 1] = fmt(e)
+        if #line == perLine or i == #list then
+            GG_Send(table.concat(line, ", "), L)
+            line = {}
+        end
+    end
+end
+
+local function PrintDungeonAbbr()
+    PrintAbbrList("던전 약자", DUNGEON_ABBR, function(e) return e[1] .. "=" .. e[2] end, 4)
+    GG_Send("채팅 약자(LFG, WTS 등)는 /mg 채팅약자", "LOCAL")
+end
+
+local function PrintChatAbbr()
+    PrintAbbrList("채팅 약자", CHAT_ABBR, function(e) return e[1] .. "=" .. e[3] end, 4)
+end
 
 -- ============================================================
 -- 슬래시 커맨드
@@ -1605,22 +1974,24 @@ SlashCmdList["MYGREETING"] = function(msg)
 
     if lower == "help" or lower == "도움" or lower == "헬프" or lower == "" then
         local L = "LOCAL"
-        GG_Send("─── 현황 조회 ───", L)
-        GG_Send("/mg 현황 / 레벨 / 직업 / 종족 / 지역 / 인던 / 전문기술", L)
-        GG_Send("/mg 등급 [등급명] / 정보 [이름]", L)
-        GG_Send("─── 장비 ───", L)
-        GG_Send("/mg 장비현황(수집) / 장비 [이름] / 장비길드 / 장비전체 / 장비[직업명]", L)
-        GG_Send("/mg 장비초기화", L)
-
-        GG_Send("─── 길드챗 (!도움 으로 상세 확인) ───", L)
-        GG_Send("!현황 / !레벨 / !직업 / !종족 / !지역 / !인던 / !전문기술 / !등급", L)
-        GG_Send("!정보 [이름] / !장비 [이름] / !장비길드 / !장비전체", L)
-        GG_Send("!머리/목/어깨/등/가슴/벨트/다리/발/손목/손/손가락/장신구/주장비/보조장비/원거리 [이름]", L)
-        GG_Send("─── 기타 ───", L)
-        GG_Send("/mg 중지 — 자동 인사 일시중지  /mg 시작 — 재개", L)
-        GG_Send("/mg reset / remove [이름] / status / db", L)
-        GG_Send("!도움 직업 / !도움 종족 / !도움 전문기술 / !도움 장비 / !도움 일정", L)
-        GG_Send("/mg 도움 타겟 — 타겟 명령어 보기", L)
+        GG_Send("--- 길드 정보 ---", L)
+        GG_Send("/mg 현황 / 레벨 / 직업 / 종족 / 지역 / 인던 / 전문기술 / 등급", L)
+        GG_Send("/mg 정보 <이름> / 등급 <등급명>", L)
+        GG_Send("--- 장비 ---", L)
+        GG_Send("/mg 장비현황 / 장비 <이름> / 장비길드 / 장비전체 / 장비<직업> / 장비초기화", L)
+        GG_Send("--- 길드챗 명령 (!도움 으로 자세히) ---", L)
+        GG_Send("!현황 !레벨 !직업 !종족 !지역 !인던 !전문기술 !등급 !정보 <이름>", L)
+        GG_Send("!일일 !일던 !영던 !전장  /  !길드<명령> = 길드챗으로 답 (예: !길드직업)", L)
+        GG_Send("!전사 !법사 ... / !오크 !인간 ... / !대장 !재봉 ...", L)
+        GG_Send("--- 기타 ---", L)
+        GG_Send("/mg 중지 — 자동 인사 멈춤  /  /mg 시작 — 다시 시작", L)
+        GG_Send("/mg 길드 — 길드 기능 전체 켜기/끄기", L)
+        GG_Send("/mg 길드명령 — 길드챗 !명령만 켜기/끄기", L)
+        GG_Send("/mg 접속인사 — 길드원 접속 인사 켜기/끄기", L)
+        GG_Send("/mg 약자 — 던전 약자 목록 / 채팅약자 — LFG, WTS 등 / /mg rfc, /mg lfg — 뜻 찾기", L)
+        GG_Send("/mg 이름확인 — 이름 형식 진단 (Forever 성+이름)", L)
+        GG_Send("/mg reset / remove <이름> / status (애드온 상태) / db", L)
+        GG_Send("/mg 도움 타겟 — 타겟 감시 명령", L)
 
     elseif lower == "도움 타겟" then
         local L = "LOCAL"
@@ -1732,15 +2103,81 @@ SlashCmdList["MYGREETING"] = function(msg)
         GG_Send("기존 멤버 수: " .. count, "LOCAL")
         GG_Send("내 이름: " .. (myName or "?"), "LOCAL")
 
+    elseif lower == "길드" then
+        if db then
+            db.guildOff = not db.guildOff
+            GG_Send("길드 기능 (인사/던전/레벨업/정각/!명령/자동초대): " .. (db.guildOff and "끔" or "켬"), "LOCAL")
+        end
+
+    elseif lower == "길드명령" then
+        if db then
+            db.guildOn = db.guildOn or {}
+            db.guildOn.cmd = not db.guildOn.cmd
+            GG_Send("길드챗 !명령어: " .. (db.guildOn.cmd and "켬" or "끔") .. " (길드 기능 전체: " .. (db.guildOff and "끔" or "켬") .. ")", "LOCAL")
+        end
+
+    elseif lower == "접속인사" then
+        if db then
+            db.loginGreetOff = not db.loginGreetOff
+            GG_Send("길드 접속 인사: " .. (db.loginGreetOff and "끔" or "켬"), "LOCAL")
+        end
+
+    elseif lower == "약자" or lower == "던전약자" then
+        PrintDungeonAbbr()
+
+    elseif lower == "채팅약자" then
+        PrintChatAbbr()
+
+    elseif ABBR_MAP[(lower:gsub("%s", ""))] then
+        for _, text in ipairs(ABBR_MAP[(lower:gsub("%s", ""))]) do
+            GG_Send(msg:upper() .. " = " .. text, "LOCAL")
+        end
+
+    elseif lower == "이름확인" or lower == "names" then
+        -- Forever 이름 형식 확인 (성+이름 / 구분자 / 채팅 보낸 사람 원문)
+        local function q(v)
+            if issecretvalue and issecretvalue(v) then return "(보안값)" end
+            return v == nil and "nil" or ("[" .. tostring(v) .. "]")
+        end
+        local n1, n2 = UnitName("player")
+        GG_Send("성+이름 체계: " .. tostring(RegionalUniqueNamesEnabled and RegionalUniqueNamesEnabled())
+            .. "  구분자: " .. q(ns.SURNAME_SEP), "LOCAL")
+        GG_Send("UnitName: " .. q(n1) .. " " .. q(n2) .. "  /  귓말용: " .. q(ns.UnitWhisperName("player")), "LOCAL")
+        if GetUnitName then GG_Send("GetUnitName(true): " .. q(GetUnitName("player", true)), "LOCAL") end
+        if UnitFullName then
+            local f1, f2 = UnitFullName("player")
+            GG_Send("UnitFullName: " .. q(f1) .. " " .. q(f2), "LOCAL")
+        end
+        if IsInGuild() then
+            for i = 1, GetNumGuildMembers() do
+                local rn = GetGuildRosterInfo(i)
+                if rn and ns.IsMe(rn) then GG_Send("길드 명단의 내 이름: " .. q(rn), "LOCAL"); break end
+            end
+            local rn1 = GetGuildRosterInfo(1)
+            GG_Send("길드 명단 1번 이름: " .. q(rn1), "LOCAL")
+        end
+        if UnitExists("target") then
+            local t1, t2 = UnitName("target")
+            GG_Send("대상 UnitName: " .. q(t1) .. " " .. q(t2) .. "  /  귓말용: " .. q(ns.UnitWhisperName("target")), "LOCAL")
+        end
+        local any = false
+        for ev, snd in pairs(ns.lastSenders) do
+            any = true
+            GG_Send("마지막 " .. ev:gsub("CHAT_MSG_", "") .. " 보낸 사람: " .. q(snd)
+                .. (type(snd) == "string" and ("  나?" .. tostring(ns.IsMe(snd))) or ""), "LOCAL")
+        end
+        if not any then GG_Send("받은 채팅 기록 없음 — 길드/파티챗을 받은 뒤 다시 실행", "LOCAL") end
+        GG_Send("채팅 잠금(인스턴스): " .. tostring(ns.InChatLockdown()), "LOCAL")
+
     elseif lower == "config" or lower == "옵션" then
-        InterfaceOptionsFrame_OpenToCategory("myGreeting")
+        ns.OpenOptions("myGreeting")
 
     else
         local playerName = myName or UnitName("player")
         playerName = playerName and (playerName:match("^([^%-]+)") or playerName)
         local handled = DispatchCommand(msg, "LOCAL", playerName)
         if not handled then
-            GG_Send("알 수 없는 명령어. /mg help", "LOCAL")
+            GG_Send("알 수 없는 명령: " .. msg .. "  (/mg 도움)", "LOCAL")
         end
     end
 end
@@ -1831,7 +2268,7 @@ optPanel:SetScript("OnShow", function()
 end)
 
 -- 저장 버튼
-local optSaveBtn = CreateFrame("Button", nil, optPanel, "GameMenuButtonTemplate")
+local optSaveBtn = CreateFrame("Button", nil, optPanel, "UIPanelButtonTemplate")
 optSaveBtn:SetSize(110, 28)
 local btnY = START_Y - #OPT_FIELDS * ROW_H - 8
 optSaveBtn:SetPoint("TOPLEFT", optPanel, "TOPLEFT", 16, btnY)
@@ -1846,7 +2283,7 @@ optSaveBtn:SetScript("OnClick", function()
 end)
 
 -- 기본값 초기화 버튼
-local optDefaultBtn = CreateFrame("Button", nil, optPanel, "GameMenuButtonTemplate")
+local optDefaultBtn = CreateFrame("Button", nil, optPanel, "UIPanelButtonTemplate")
 optDefaultBtn:SetSize(130, 28)
 optDefaultBtn:SetPoint("LEFT", optSaveBtn, "RIGHT", 6, 0)
 optDefaultBtn:SetText("기본값으로")

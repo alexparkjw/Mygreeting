@@ -1,3 +1,5 @@
+local _, ns = ...  -- Compat.lua (beta 포팅)
+local GetItemInfo, GetSpellInfo, SendChatMessage, UnitAura = ns.GetItemInfo, ns.GetSpellInfo, ns.SendChatMessage, ns.UnitAura
 -- ============================================================
 -- BuffGreeter.lua
 -- 버프 감사 + 소환/인던 자동 인사
@@ -71,25 +73,54 @@ local lastBuffThanks    = {}
 local prevPlayerBuffs   = {}   -- [spellId] = true : 직전 보유 버프
 local pendingSummon     = false
 local summonTimer       = nil
+local summonOfferTime   = 0    -- 소환 요청 받은 시각 (훅이 안 걸릴 때 PEW 대비용)
 
--- ConfirmSummon 훅: CONFIRM_SUMMON 이벤트가 TBC 클래식에서 안 뜨는 경우 대비
-if ConfirmSummon then
-    local _orig = ConfirmSummon
-    ConfirmSummon = function(...)
-        pendingSummon = true
-        if summonTimer then summonTimer:Cancel() end
-        summonTimer = C_Timer.NewTimer(120, function()
-            pendingSummon = false
-        end)
-        return _orig(...)
+-- 소환 감사: 파티/공대 채널로 전송 (도착 직후 그룹 정보가 늦게 올 수 있어 재시도)
+local function TrySummonThanks(n)
+    local m = MyGreeting_GetMsg("summon")
+    if m == "" then return end
+    if IsInRaid() then
+        SendChatMessage(m, "RAID")
+    elseif IsInGroup() or UnitExists("party1") then
+        SendChatMessage(m, "PARTY")
+    elseif n > 0 then
+        C_Timer.After(1, function() TrySummonThanks(n - 1) end)
     end
 end
+
+-- 소환 수락 확정 → 도착 후 감사 1회
+-- 같은 대륙 소환은 로딩화면이 없어 PLAYER_ENTERING_WORLD가 안 뜸 → 수락 시점 타이머로 처리
+local function FireSummonThanks(delay)
+    if not pendingSummon then return end
+    pendingSummon = false
+    if summonTimer then summonTimer:Cancel(); summonTimer = nil end
+    C_Timer.After(delay, function() TrySummonThanks(10) end)
+end
+
+-- ConfirmSummon 훅 (소환 수락 버튼)
+-- beta: 전역 덮어쓰기는 taint 유발 → hooksecurefunc 사용
+local function OnConfirmSummon()
+    pendingSummon   = true
+    summonOfferTime = 0
+    if DEBUG_MODE then DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[BuffDebug]|r 소환 수락") end
+    if summonTimer then summonTimer:Cancel() end
+    -- 로딩화면이 있으면 타이머가 로딩 후에 돌고, PEW가 먼저 오면 그쪽에서 처리
+    summonTimer = C_Timer.NewTimer(3, function()
+        summonTimer = nil
+        FireSummonThanks(0)
+    end)
+end
+if ConfirmSummon then hooksecurefunc("ConfirmSummon", OnConfirmSummon) end
+if C_SummonInfo and C_SummonInfo.ConfirmSummon then hooksecurefunc(C_SummonInfo, "ConfirmSummon", OnConfirmSummon) end
 local preTradeBag       = nil
+local tradePartner      = nil  -- 거래 상대 귓말 이름
 local preLootBag        = {}
 local recentTableMage    = nil  -- {name, time}
 local tablePreBag        = nil  -- 식탁 시전 시점 가방 스냅샷
 local recentSoulwellLock = nil  -- {name, time}
 local rezCaster         = nil
+local rezAccepted       = false  -- 부활 수락 버튼 눌렀는지 (AcceptResurrect 훅)
+if AcceptResurrect then hooksecurefunc("AcceptResurrect", function() rezAccepted = true end) end
 local wasDead           = false
 local recentCasters     = {}   -- [spellId] = {name=..., time=...} : 전투로그 시전자 캐시
 local zoneChangeTime    = 0    -- 존 전환 직후 오발 방지용
@@ -98,16 +129,16 @@ local ZONE_GRACE        = 6    -- 존 전환 후 버프 감사 억제 시간 (�
 -- 거래 아이템 친근한 이름 (없으면 게임 아이템 이름 그대로 사용)
 local TRADE_FRIENDLY_NAME = {
     -- 흑마 돌
-    [5512]="사탕",[19004]="사탕",[19005]="사탕",
-    [19006]="사탕",[19007]="사탕",[19008]="사탕",
-    [22103]="사탕",[36892]="사탕",
+    [5512]="생명석",[19004]="생명석",[19005]="생명석",
+    [19006]="생명석",[19007]="생명석",[19008]="생명석",
+    [22103]="생명석",[36892]="생명석",
     -- 창조된 빵/물
-    [160]="물빵",[1113]="물빵",[1487]="물빵",[2070]="물빵",[4601]="물빵",
-    [5349]="물빵",[8075]="물빵",[8076]="물빵",[22895]="물빵",[22896]="물빵",
-    [43523]="물빵",[65499]="물빵",
-    [5350]="물빵",[8077]="물빵",[8078]="물빵",[22891]="물빵",[22892]="물빵",
-    [27860]="물빵",[43524]="물빵",[65500]="물빵",
-    [2287]="물빵",[2288]="물빵",
+    [160]="빵/물",[1113]="빵/물",[1487]="빵/물",[2070]="빵/물",[4601]="빵/물",
+    [5349]="빵/물",[8075]="빵/물",[8076]="빵/물",[22895]="빵/물",[22896]="빵/물",
+    [43523]="빵/물",[65499]="빵/물",
+    [5350]="빵/물",[8077]="빵/물",[8078]="빵/물",[22891]="빵/물",[22892]="빵/물",
+    [27860]="빵/물",[43524]="빵/물",[65500]="빵/물",
+    [2287]="빵/물",[2288]="빵/물",
     -- 마나석
     [5514]="마나석",[5515]="마나석",[8007]="마나석",[8008]="마나석",[22044]="마나석",
 }
@@ -156,6 +187,8 @@ local SCAN_INTERVAL  = 0.5
 
 buffScanFrame:SetScript("OnUpdate", function(self, elapsed)
     if IsInRaid() then return end
+    -- beta: 전투 중엔 오라가 secret → 스캔 건너뜀 (prevPlayerBuffs 유지, 전투 끝나고 감지)
+    if ns.AurasSecret() then return end
     buffScanTimer = buffScanTimer + elapsed
     if buffScanTimer < SCAN_INTERVAL then return end
     buffScanTimer = 0
@@ -168,6 +201,7 @@ buffScanFrame:SetScript("OnUpdate", function(self, elapsed)
     while true do
         local name, _, _, _, _, _, sourceUnit, _, _, spellId = UnitAura("player", i, "HELPFUL")
         if not name then break end
+        if issecretvalue and issecretvalue(spellId) then return end  -- 스캔 중단, 직전 상태 유지
         if MAJOR_BUFF_IDS[spellId] then
             current[spellId] = sourceUnit or ""
         end
@@ -179,12 +213,8 @@ buffScanFrame:SetScript("OnUpdate", function(self, elapsed)
     for spellId, sourceUnit in pairs(current) do
         if not prevPlayerBuffs[spellId] and not inGrace and not IsInRaid() then
             local casterName = nil
-            if sourceUnit ~= "" then
-                casterName = UnitName(sourceUnit)
-                if not casterName then
-                    casterName = sourceUnit:match("^([^%-]+)") or sourceUnit
-                end
-                if casterName == playerName then casterName = nil end
+            if sourceUnit ~= "" and not UnitIsUnit(sourceUnit, "player") then
+                casterName = ns.UnitWhisperName(sourceUnit)
             end
 
             if not casterName then
@@ -203,9 +233,8 @@ buffScanFrame:SetScript("OnUpdate", function(self, elapsed)
             if casterName then
                 local now = GetTime()
                 if not lastBuffThanks[casterName] or (now - lastBuffThanks[casterName]) >= BUFF_COOLDOWN then
-                    local spellName = GetSpellInfo(spellId) or BUFF_SHORT_NAME[spellId] or "버프"
                     lastBuffThanks[casterName] = now
-                    SendChatMessage(spellName .. " 감사합니다", "WHISPER", nil, casterName)
+                    SendChatMessage((GetSpellInfo(spellId) or "버프") .. " 감사합니다", "WHISPER", nil, casterName)
                 end
             end
         end
@@ -228,7 +257,8 @@ buffFrame:RegisterEvent("PLAYER_DEAD")
 buffFrame:RegisterEvent("RESURRECT_REQUEST")
 buffFrame:RegisterEvent("PLAYER_ALIVE")
 buffFrame:RegisterEvent("PLAYER_UNGHOST")
-buffFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+-- beta: COMBAT_LOG_EVENT_UNFILTERED는 제한 이벤트 → 파티원 시전 이벤트로 대체
+buffFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 buffFrame:RegisterEvent("LOOT_OPENED")
 buffFrame:RegisterEvent("LOOT_CLOSED")
 buffFrame:RegisterEvent("BAG_UPDATE_DELAYED")
@@ -236,23 +266,30 @@ buffFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 buffFrame:SetScript("OnEvent", function(self, event, ...)
 
     -- ── 전투 로그: 버프 시전자 캐시 ──────────────────────────
-    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+    if event == "UNIT_SPELLCAST_SUCCEEDED" then
         if IsInRaid() then return end
-        local _, subEvent, _, _, sourceName, _, _, destGUID, _, _, _, spellId = CombatLogGetCurrentEventInfo()
-        if (subEvent == "SPELL_AURA_APPLIED" or subEvent == "SPELL_AURA_REFRESH")
-            and destGUID == UnitGUID("player")
-            and MAJOR_BUFF_IDS[spellId]
-            and sourceName
-        then
-            local name = sourceName:match("^([^%-]+)") or sourceName
-            if name ~= UnitName("player") then
-                recentCasters[spellId] = { name = name, time = GetTime() }
+        local unit, _, spellId = ...
+        -- beta: 전투 중 spellId가 secret → 테이블 키로 못 씀
+        if issecretvalue and (issecretvalue(unit) or issecretvalue(spellId)) then return end
+        if not unit then return end
+        -- 파티원 + 비파티(대상/주시/마우스오버/이름표) 시전도 추적
+        local isParty = unit:match("^party%d$") ~= nil
+        if not (isParty or unit == "target" or unit == "focus" or unit == "mouseover"
+                or unit:match("^nameplate%d+$")) then return end
+        if UnitIsUnit(unit, "player") then return end
+        local sourceName = ns.UnitWhisperName(unit)
+        if MAJOR_BUFF_IDS[spellId] and sourceName then
+            -- 시전자 대상이 나 (또는 마우스오버 시전 등으로 대상 없음)
+            local tu = unit .. "target"
+            if UnitIsUnit(tu, "player") or not UnitExists(tu) then
+                recentCasters[spellId] = { name = sourceName, time = GetTime() }
             end
         end
+        if not isParty then return end  -- 식탁/소울웰은 파티원만
 
         -- 식탁/소울웰 시전자 추적
-        if subEvent == "SPELL_CAST_SUCCESS" and sourceName then
-            local caster = sourceName:match("^([^%-]+)") or sourceName
+        if sourceName then
+            local caster = sourceName
             if CONJURE_TABLE_IDS[spellId] then
                 recentTableMage = { name = caster, time = GetTime() }
                 tablePreBag = SnapshotBag()
@@ -264,7 +301,6 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
 
     -- ── 로그인 시 초기화 ──────────────────────────────────────
     elseif event == "PLAYER_LOGIN" then
-        pendingSummon     = false
         prevPlayerBuffs   = {}
         rezCaster         = nil
         wasDead           = false
@@ -278,10 +314,18 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
         rezCaster = nil
 
     elseif event == "RESURRECT_REQUEST" then
-        rezCaster = (...)  -- 시전자 이름
+        rezCaster   = (...)  -- 시전자 이름
+        rezAccepted = false
 
     elseif event == "PLAYER_ALIVE" or event == "PLAYER_UNGHOST" then
-        if wasDead and rezCaster then
+        -- PLAYER_ALIVE 는 영혼 풀고 묘지로 갈 때도 뜸 → 아직 유령이면 부활 아님
+        if UnitIsDeadOrGhost("player") then
+            if not rezAccepted then rezCaster = nil end
+            return
+        end
+        -- 수락 버튼을 누른 부활만 감사 (훅이 없는 클라면 예전처럼 요청만 보고 판단)
+        local accepted = rezAccepted or not AcceptResurrect
+        if wasDead and rezCaster and accepted then
             local caster = rezCaster
             C_Timer.After(GREET_DELAY, function()
                 local m = MyGreeting_GetMsg("resurrect")
@@ -293,37 +337,23 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
                 end
             end)
         end
-        wasDead   = false
-        rezCaster = nil
+        wasDead     = false
+        rezCaster   = nil
+        rezAccepted = false
 
     -- ── 소환 감사 ─────────────────────────────────────────────
     elseif event == "CONFIRM_SUMMON" then
-        pendingSummon = true
-        if summonTimer then summonTimer:Cancel() end
-        summonTimer = C_Timer.NewTimer(120, function()
-            pendingSummon = false
-        end)
+        -- 소환 요청만 온 상태 (수락 전) → 수락은 ConfirmSummon 훅에서 감지
+        summonOfferTime = GetTime()
+        if DEBUG_MODE then DEFAULT_CHAT_FRAME:AddMessage("|cffFFFF00[BuffDebug]|r 소환 요청 받음") end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         prevPlayerBuffs = {}
         zoneChangeTime  = GetTime()  -- 존 전환 시각 기록 → 억제 타이머 시작
-
-        if pendingSummon then
-            pendingSummon = false
-            if summonTimer then summonTimer:Cancel() end
-            local function TrySummonThanks(n)
-                local m = MyGreeting_GetMsg("summon")
-                if m == "" then return end
-                if IsInRaid() then
-                    SendChatMessage(m, "RAID")
-                elseif IsInGroup() or IsInParty() then
-                    SendChatMessage(m, "PARTY")
-                elseif n > 0 then
-                    C_Timer.After(1, function() TrySummonThanks(n - 1) end)
-                end
-            end
-            C_Timer.After(0.5, function() TrySummonThanks(10) end)
-        end
+        -- 로딩화면 있는 소환 (훅이 안 걸렸어도 요청 후 120초 안에 로딩이면 소환으로 간주)
+        if summonOfferTime > 0 and (GetTime() - summonOfferTime) < 120 then pendingSummon = true end
+        summonOfferTime = 0
+        FireSummonThanks(0.5)
 
     -- ── 식탁/소울웰 아이템 감지 ──────────────────────────────
     elseif event == "LOOT_OPENED" then
@@ -338,7 +368,7 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
                 local before = preLootBag[itemID] or 0
                 if count > before then
                     local label = TRADE_FRIENDLY_NAME[itemID]
-                    if label == "물빵" then gotFood = true end
+                    if label == "빵/물" then gotFood = true end
                     if HEALTHSTONE_ITEM_IDS[itemID] then gotHealthstone = true end
                 end
             end
@@ -374,7 +404,7 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
         local afterBag = SnapshotBag()
         local gotFood = false
         for itemID, count in pairs(afterBag) do
-            if count > (tablePreBag[itemID] or 0) and TRADE_FRIENDLY_NAME[itemID] == "물빵" then
+            if count > (tablePreBag[itemID] or 0) and TRADE_FRIENDLY_NAME[itemID] == "빵/물" then
                 gotFood = true; break
             end
         end
@@ -391,7 +421,9 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
 
     -- ── 거래 전 스냅샷 ────────────────────────────────────────
     elseif event == "TRADE_SHOW" then
-        preTradeBag = SnapshotBag()
+        preTradeBag  = SnapshotBag()
+        -- 거래 상대 (파티 아닐 때 /s 대신 귓말로 감사). 거래창 열린 동안 "NPC" 유닛 = 상대
+        tradePartner = UnitExists("NPC") and ns.UnitWhisperName("NPC") or nil
 
     -- ── 거래 완료 후 아이템 감지 ──────────────────────────────
     elseif event == "TRADE_CLOSED" then
@@ -409,7 +441,7 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
                 if count > before then
                     local label = TRADE_FRIENDLY_NAME[itemID]
                     if not label then
-                        label = GetItemInfo(itemID)  -- 모르는 아이템은 실제 이름 사용
+                        label = nil  -- 빵/물·생명석·마나석만 감사 (산 물건 등은 인사 안 함)
                     end
                     if label and not seen[label] then
                         seen[label] = true
@@ -435,8 +467,13 @@ buffFrame:SetScript("OnEvent", function(self, event, ...)
                 else
                     msg = table.concat(parts, ", ") .. " 감사합니다"
                 end
-                local channel = IsInParty() and "PARTY" or "SAY"
-                C_Timer.After(0.5, function() SendChatMessage(msg, channel) end)
+                C_Timer.After(0.5, function()
+                    if IsInParty() then
+                        SendChatMessage(msg, "PARTY")
+                    elseif tradePartner then
+                        SendChatMessage(msg, "WHISPER", nil, tradePartner)
+                    end
+                end)
             end
         end)
     end
